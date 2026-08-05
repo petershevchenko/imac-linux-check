@@ -1,0 +1,56 @@
+{
+  "id": "gpu-pci-1002-6819",
+  "category": "gpu",
+  "name": "AMD Pitcairn PRO (Radeon R9 M380 / M390 class, GCN 1.0 / Southern Islands)",
+  "match": {
+    "pci": ["1002:6819"],
+    "pci_subsystem": ["106b:014e"]
+  },
+  "linux": {
+    "status": "works_with_caveats",
+    "driver": "amdgpu",
+    "driver_alternatives": ["radeon"],
+    "kernel_min": "5.10",
+    "firmware_package": "linux-firmware",
+    "summary": "amdgpu binds automatically on modern kernels; Display Core initialises on DCE 6.0. Reports Display Core v3.2.369, 2048 MB GDDR5, 256-bit. Connectors exposed: eDP-1, DP-1, DP-2, DP-3.",
+    "caveats": [
+      {
+        "id": "no-backlight",
+        "summary": "Panel brightness control is unavailable.",
+        "detail": "amdgpu logs 'Skipping amdgpu DM backlight registration' on DCE 6.0. Brightness cannot be adjusted from software.",
+        "severity": "minor"
+      },
+      {
+        "id": "no-native-5k",
+        "summary": "Native 5120x2880 does not work; the internal panel is limited to 3840x2160.",
+        "detail": "5120x2880@60 needs two DisplayPort channels. DCE 6.0 is DisplayPort 1.2, so a link caps at HBR2 (4 lanes x 5.4 Gbps = 21.6 Gbps raw, ~17.28 Gbps payload after 8b/10b, ~720 MHz pixel clock at 24bpp); reduced-blanking 5K60 needs ~938 MHz and does not fit. One channel suffices for 3840x2160@60. The EDID has a CTA-861 extension but no DisplayID tile block, so the 5K mode is never advertised (not kernel mode pruning). Forcing video=eDP-1:5120x2880@60 yields 'User-defined mode not supported'. Widely circulated forum advice (amdgpu.dc=1 amdgpu.mst=1 video=eDP-1:5120x2880@60) comes from 2017/2019 Polaris iMacs with DisplayPort 1.4 / HBR3 where 5K60 fits on one link, and does not apply to this DCE 6.0 machine.",
+        "severity": "major"
+      }
+    ],
+    "workarounds": [
+      {
+        "problem": "No DRM driver binds; only simpledrm with a card0-Unknown-1 connector, no external outputs, no hotplug.",
+        "cause": "nomodeset on the kernel command line, commonly added to get the installer running.",
+        "fix": "Remove nomodeset from GRUB_CMDLINE_LINUX_DEFAULT, then run update-grub and reboot. Diagnostic signature: 'lspci -nnk' shows no 'Kernel driver in use:' line for the VGA device.",
+        "kernel_params_remove": ["nomodeset"]
+      },
+      {
+        "problem": "Older kernels bind the legacy radeon driver instead of amdgpu.",
+        "fix": "Force Southern Islands to amdgpu via kernel parameters.",
+        "kernel_params_add": [
+          "radeon.si_support=0",
+          "radeon.cik_support=0",
+          "amdgpu.si_support=1",
+          "amdgpu.cik_support=1"
+        ]
+      }
+    ],
+    "provenance": {
+      "last_verified": "2026-07-24",
+      "verified_kernel": "7.0.0-28-generic",
+      "verified_distro": "Ubuntu 24.04",
+      "verified_by": "direct observation on hardware",
+      "sources": []
+    }
+  }
+}

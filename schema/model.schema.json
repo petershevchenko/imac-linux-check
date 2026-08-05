@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/petershevchenko/imac-linux-check/schema/model.schema.json",
+  "title": "Model record",
+  "description": "A single Apple model identifier and the components it ships with.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "model_identifier",
+    "marketing_name",
+    "screen_size_inches",
+    "native_resolution",
+    "components"
+  ],
+  "properties": {
+    "model_identifier": {
+      "description": "Canonical Apple identifier, e.g. iMac17,1. Comma preserved inside the file.",
+      "type": "string",
+      "pattern": "^[A-Za-z]+[0-9]+,[0-9]+$"
+    },
+    "marketing_name": { "type": "string", "minLength": 1 },
+    "screen_size_inches": { "type": "number", "exclusiveMinimum": 0 },
+    "native_resolution": {
+      "type": "string",
+      "pattern": "^[0-9]+x[0-9]+$"
+    },
+    "components": {
+      "description": "Component IDs shipped in the base configuration. Each must resolve to a file in data/components/.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" }
+    },
+    "variants": {
+      "description": "Build-to-order or user-replaced configurations distinguished from the base at collection time.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["description", "distinguish_by", "components_replace"],
+        "properties": {
+          "description": { "type": "string", "minLength": 1 },
+          "distinguish_by": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+              "pci": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "pattern": "^[0-9a-f]{4}:[0-9a-f]{4}$" }
+              },
+              "pci_subsystem": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "pattern": "^[0-9a-f]{4}:[0-9a-f]{4}$" }
+              }
+            }
+          },
+          "components_replace": {
+            "description": "Map of base component ID -> replacement component ID for this variant.",
+            "type": "object",
+            "minProperties": 1,
+            "propertyNames": { "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+            "additionalProperties": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" }
+          }
+        }
+      }
+    },
+    "model_notes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["last_verified", "verified_by", "sources"],
+      "properties": {
+        "last_verified": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "verified_kernel": { "type": "string", "minLength": 1 },
+        "verified_distro": { "type": "string", "minLength": 1 },
+        "verified_by": {
+          "type": "string",
+          "enum": [
+            "direct observation on hardware",
+            "third-party report",
+            "not yet verified"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri" }
+        }
+      }
+    }
+  }
+}

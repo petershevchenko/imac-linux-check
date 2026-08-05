@@ -1,0 +1,31 @@
+{
+  "components": {
+    "gpu-pci-1002-6819": {
+      "category": "gpu",
+      "file": "components/gpu-pci-1002-6819.json",
+      "status": "works_with_caveats"
+    },
+    "gpu-pci-1002-6938": {
+      "category": "gpu",
+      "file": "components/gpu-pci-1002-6938.json",
+      "status": "unknown"
+    },
+    "wifi-bcm4360": {
+      "category": "wifi",
+      "file": "components/wifi-bcm4360.json",
+      "status": "unknown"
+    }
+  },
+  "generated_by": "scripts/gen-index.py",
+  "models": {
+    "iMac17,1": {
+      "components": [
+        "gpu-pci-1002-6819",
+        "wifi-bcm4360"
+      ],
+      "file": "models/imac17-1.json",
+      "marketing_name": "iMac (Retina 5K, 27-inch, Late 2015)"
+    }
+  },
+  "schema_version": 1
+}

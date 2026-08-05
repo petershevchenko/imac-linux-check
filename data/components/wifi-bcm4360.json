@@ -1,0 +1,17 @@
+{
+  "id": "wifi-bcm4360",
+  "category": "wifi",
+  "name": "Broadcom BCM4360 802.11ac",
+  "match": {
+    "pci": ["14e4:43a0"]
+  },
+  "linux": {
+    "status": "unknown",
+    "summary": "No verified Linux support data for this chip on this hardware yet. Broadcom BCM43xx parts commonly require the out-of-tree wl (broadcom-sta) driver, which has Secure Boot implications, but this has not been directly confirmed here and must not be inferred. A report is invited.",
+    "provenance": {
+      "last_verified": "2026-07-24",
+      "verified_by": "not yet verified",
+      "sources": []
+    }
+  }
+}

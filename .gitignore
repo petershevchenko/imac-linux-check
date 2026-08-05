@@ -1,0 +1,14 @@
+# Runtime cache the collector is allowed to write to
+.cache/
+~/.cache/imac-linux-check/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Editor / OS cruft
+.DS_Store
+*.swp

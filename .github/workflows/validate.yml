@@ -1,0 +1,47 @@
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  data:
+    name: data validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: pip install jsonschema check-jsonschema
+
+      - name: Validate components against schema
+        run: check-jsonschema --schemafile schema/component.schema.json data/components/*.json
+
+      - name: Validate models against schema
+        run: check-jsonschema --schemafile schema/model.schema.json data/models/*.json
+
+      - name: Check index.json is up to date
+        run: python3 scripts/gen-index.py --check
+
+      - name: Data integrity (referential integrity, staleness, orphans)
+        run: python3 tests/test_data_integrity.py
+
+  shell:
+    name: shellcheck collector
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The collector arrives in milestone 2; until then there is nothing to lint.
+      - name: shellcheck
+        run: |
+          if [ -f bin/imac-linux-check ]; then
+            shellcheck bin/imac-linux-check
+          else
+            echo "bin/imac-linux-check not present yet (milestone 2) — skipping."
+          fi

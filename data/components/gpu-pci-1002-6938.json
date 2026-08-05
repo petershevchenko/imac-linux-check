@@ -1,0 +1,17 @@
+{
+  "id": "gpu-pci-1002-6938",
+  "category": "gpu",
+  "name": "AMD Antigua / Amethyst (Radeon R9 M395 / M395X class)",
+  "match": {
+    "pci": ["1002:6938"]
+  },
+  "linux": {
+    "status": "unknown",
+    "summary": "Build-to-order GPU option for iMac17,1. No verified Linux support data on this hardware yet. Do not infer from the base M380/M390 (Pitcairn) record; this is a different ASIC (Tonga/Antigua class). A report is invited.",
+    "provenance": {
+      "last_verified": "2026-07-24",
+      "verified_by": "not yet verified",
+      "sources": []
+    }
+  }
+}

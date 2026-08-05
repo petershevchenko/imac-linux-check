@@ -1,0 +1,203 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/petershevchenko/imac-linux-check/schema/component.schema.json",
+  "title": "Component record",
+  "description": "A single hardware component and its documented Linux support status.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "category", "name", "match", "linux"],
+  "properties": {
+    "id": {
+      "description": "Stable component identifier. Also the filename stem (data/components/<id>.json).",
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "gpu",
+        "wifi",
+        "audio",
+        "bluetooth",
+        "ethernet",
+        "storage",
+        "camera",
+        "thermal",
+        "t2",
+        "boot"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "match": {
+      "description": "How the collector recognises this component on live hardware.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "pci": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^[0-9a-f]{4}:[0-9a-f]{4}$" }
+        },
+        "pci_subsystem": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^[0-9a-f]{4}:[0-9a-f]{4}$" }
+        },
+        "model_string": {
+          "description": "Substring match against system_profiler-reported names, when no PCI ID is exposed.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "linux": { "$ref": "#/definitions/linux" }
+  },
+  "definitions": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "works",
+        "works_with_caveats",
+        "works_with_workaround",
+        "needs_out_of_tree_driver",
+        "partial",
+        "broken",
+        "unknown"
+      ]
+    },
+    "linux": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "summary", "provenance"],
+      "properties": {
+        "status": { "$ref": "#/definitions/status" },
+        "driver": { "type": "string", "minLength": 1 },
+        "driver_alternatives": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "kernel_min": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+        },
+        "firmware_package": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 },
+        "caveats": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/caveat" }
+        },
+        "workarounds": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/workaround" }
+        },
+        "provenance": { "$ref": "#/definitions/provenance" }
+      },
+      "allOf": [
+        {
+          "description": "unknown is the absence of a claim: it must carry 'not yet verified', and no verified status may.",
+          "if": {
+            "properties": { "status": { "const": "unknown" } }
+          },
+          "then": {
+            "properties": {
+              "provenance": {
+                "properties": {
+                  "verified_by": { "const": "not yet verified" }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "provenance": {
+                "properties": {
+                  "verified_by": {
+                    "enum": [
+                      "direct observation on hardware",
+                      "third-party report"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "caveat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "summary", "severity"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "summary": { "type": "string", "minLength": 1 },
+        "detail": { "type": "string", "minLength": 1 },
+        "severity": {
+          "type": "string",
+          "enum": ["minor", "moderate", "major"]
+        }
+      }
+    },
+    "workaround": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["problem", "fix"],
+      "properties": {
+        "problem": { "type": "string", "minLength": 1 },
+        "cause": { "type": "string", "minLength": 1 },
+        "fix": { "type": "string", "minLength": 1 },
+        "kernel_params_add": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "kernel_params_remove": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "provenance": {
+      "description": "Where a support claim comes from and when it was last checked. Enforced on every record; relaxed only for status=unknown, which is the absence of a claim.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["last_verified", "verified_by", "sources"],
+      "properties": {
+        "last_verified": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "verified_kernel": { "type": "string", "minLength": 1 },
+        "verified_distro": { "type": "string", "minLength": 1 },
+        "verified_by": {
+          "type": "string",
+          "enum": [
+            "direct observation on hardware",
+            "third-party report",
+            "not yet verified"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": { "type": "string", "format": "uri" }
+        }
+      },
+      "allOf": [
+        {
+          "description": "Direct-observation claims must name the kernel and distro they were seen on.",
+          "if": {
+            "properties": {
+              "verified_by": { "const": "direct observation on hardware" }
+            }
+          },
+          "then": { "required": ["verified_kernel", "verified_distro"] }
+        }
+      ]
+    }
+  }
+}

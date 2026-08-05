@@ -1,0 +1,28 @@
+{
+  "model_identifier": "iMac17,1",
+  "marketing_name": "iMac (Retina 5K, 27-inch, Late 2015)",
+  "screen_size_inches": 27,
+  "native_resolution": "5120x2880",
+  "components": [
+    "gpu-pci-1002-6819",
+    "wifi-bcm4360"
+  ],
+  "variants": [
+    {
+      "description": "Build-to-order Radeon R9 M395 / M395X",
+      "distinguish_by": { "pci": ["1002:6938"] },
+      "components_replace": { "gpu-pci-1002-6819": "gpu-pci-1002-6938" }
+    }
+  ],
+  "model_notes": [
+    "Display topology: eDP-1 is the internal 5K panel primary link; DP-1 is the panel's second link (reported disconnected in single-link operation); DP-2 and DP-3 are the two external Thunderbolt 2 / Mini DisplayPort ports.",
+    "External display over Mini DisplayPort to DisplayPort (passive cable) works at 3840x2160."
+  ],
+  "provenance": {
+    "last_verified": "2026-07-24",
+    "verified_kernel": "7.0.0-28-generic",
+    "verified_distro": "Ubuntu 24.04",
+    "verified_by": "direct observation on hardware",
+    "sources": []
+  }
+}
