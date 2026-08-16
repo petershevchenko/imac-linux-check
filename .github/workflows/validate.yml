@@ -36,12 +36,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      # The collector arrives in milestone 2; until then there is nothing to lint.
       - name: shellcheck
-        run: |
-          if [ -f bin/imac-linux-check ]; then
-            shellcheck bin/imac-linux-check
-          else
-            echo "bin/imac-linux-check not present yet (milestone 2) — skipping."
-          fi
+        run: shellcheck bin/imac-linux-check
+
+  collector:
+    name: collector (bats)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install zsh, jq, bats
+        run: sudo apt-get update && sudo apt-get install -y zsh jq bats
+      - name: Run collector tests against fixtures
+        run: bats tests/test_collector.bats

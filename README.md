@@ -8,10 +8,10 @@ Apple ships a small number of fixed configurations per model, and the model iden
 fallback path for build-to-order options — not a general hardware-matching engine. Scope at
 launch is **27" iMacs**.
 
-> **Status: early build (milestone 1 of 6).** The data schema, the validation pipeline, and
-> the first verified model record (`iMac17,1`) are in place. The collector script
-> (`bin/imac-linux-check`) that reads live hardware lands in the next milestone. See the
-> [handoff spec](imac-linux-check-HANDOFF.md) for the full plan.
+> **Status: early build.** The data schema, the validation pipeline, and the first verified
+> model record (`iMac17,1`) are in place. The collector (`bin/imac-linux-check`) currently
+> has its I/O skeleton and fixture harness; live hardware detection is being filled in. See
+> [`ROADMAP.md`](ROADMAP.md) for the plan.
 
 ## What makes it trustworthy
 

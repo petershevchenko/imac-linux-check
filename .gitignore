@@ -12,3 +12,6 @@ venv/
 # Editor / OS cruft
 .DS_Store
 *.swp
+
+# Private spec — kept locally, not distributed
+imac-linux-check-HANDOFF.md

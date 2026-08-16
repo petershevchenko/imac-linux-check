@@ -1,0 +1,40 @@
+{
+  "SPHardwareDataType": [
+    {
+      "_name": "hardware_overview",
+      "machine_model": "iMac17,1",
+      "machine_name": "iMac",
+      "model_number": "MK482xx/A",
+      "chip_type": "Intel Core i5",
+      "number_processors": "quad-core",
+      "physical_memory": "32 GB",
+      "boot_rom_version": "428.0.0.0.0"
+    }
+  ],
+  "SPDisplaysDataType": [
+    {
+      "_name": "kHW_AMDRadeonR9M390Item",
+      "spdisplays_vendor": "sppci_vendor_amd",
+      "sppci_device_type": "spdisplays_gpu",
+      "sppci_model": "AMD Radeon R9 M390",
+      "spdisplays_vram": "2 GB",
+      "spdisplays_pcie_width": "x16",
+      "spdisplays_ndrvs": [
+        {
+          "_name": "iMac",
+          "spdisplays_pixels": "5120 x 2880",
+          "spdisplays_resolution": "5120 x 2880 @ 60.00Hz",
+          "spdisplays_display_type": "spdisplays_built-in_retinaLCD"
+        }
+      ]
+    }
+  ],
+  "SPAirPortDataType": [
+    {
+      "_name": "spairport_wireless_card_type_airport_extreme",
+      "spairport_wireless_card_type": "spairport_wireless_card_type_airport_extreme",
+      "spairport_wireless_locale": "US"
+    }
+  ],
+  "SPiBridgeDataType": []
+}

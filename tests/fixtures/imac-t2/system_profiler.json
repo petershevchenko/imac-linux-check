@@ -1,0 +1,8 @@
+{
+  "SPHardwareDataType": [
+    { "_name": "hardware_overview", "machine_model": "iMac20,1", "machine_name": "iMac", "physical_memory": "8 GB" }
+  ],
+  "SPiBridgeDataType": [
+    { "_name": "controller", "ibridge_build": "18P4030", "ibridge_model_identifier": "Apple T2 Security Chip" }
+  ]
+}

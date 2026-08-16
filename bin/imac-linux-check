@@ -1,0 +1,339 @@
+#!/usr/bin/env zsh
+# shellcheck shell=bash
+#
+# imac-linux-check — report an iMac's hardware and what will/won't work under Linux.
+#
+# HARD RULES (see ROADMAP.md / the project spec):
+#   * READ-ONLY on the host. No writes outside ~/.cache/imac-linux-check/.
+#   * Data only, never code. This script parses inert JSON; it never fetches or
+#     executes remote content.
+#
+# Milestone 2: I/O skeleton + fixture harness. Detects model, macOS version, T2
+# presence, and looks the model up in the bundled dataset. PCI-ID extraction and
+# network data tiers arrive in later milestones.
+#
+# JSON parsing uses `plutil` (always present on macOS) or `jq` (Linux/CI), so the
+# tool needs no third-party dependency on a real Mac.
+
+set -u
+
+VERSION="0.2.0-dev"
+
+# --- locate ourselves and the bundled dataset ------------------------------
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+BUNDLED_DATA="$SCRIPT_DIR/../data"
+
+# --- options ---------------------------------------------------------------
+
+FIXTURE_DIR=""
+OUTPUT="human"      # human | json | markdown
+VERBOSE=0
+OFFLINE=0           # accepted now; network tiers land in a later milestone
+USE_COLOR="auto"    # auto | always | never
+
+err() { printf '%s\n' "imac-linux-check: $*" >&2; }
+
+usage() {
+  cat <<'EOF'
+imac-linux-check — will Linux work on this iMac?
+
+Usage: imac-linux-check [options]
+
+Options:
+  --json               Machine-readable output.
+  --markdown           Markdown output, for pasting into issues/forum posts.
+  --verbose            Include provenance dates and raw detection detail.
+  --offline            Use bundled data only, skip any network (currently the default).
+  --fixture-dir DIR    Read captured tool output from DIR instead of live hardware.
+  --no-color           Disable ANSI colour.
+  -h, --help           Show this help.
+  --version            Print version.
+
+This tool is read-only and fetches inert JSON only. It never modifies the machine.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)        usage; exit 0 ;;
+    --version)        printf '%s\n' "$VERSION"; exit 0 ;;
+    --json)           OUTPUT="json"; shift ;;
+    --markdown)       OUTPUT="markdown"; shift ;;
+    --verbose)        VERBOSE=1; shift ;;
+    --offline)        OFFLINE=1; shift ;;
+    --no-color)       USE_COLOR="never"; shift ;;
+    --fixture-dir)    FIXTURE_DIR="${2:-}"; shift 2 ;;
+    --fixture-dir=*)  FIXTURE_DIR="${1#*=}"; shift ;;
+    --)               shift; break ;;
+    -*)               err "unknown option: $1"; usage >&2; exit 2 ;;
+    *)                err "unexpected argument: $1"; exit 2 ;;
+  esac
+done
+
+if [ -n "$FIXTURE_DIR" ] && [ ! -d "$FIXTURE_DIR" ]; then
+  err "fixture dir not found: $FIXTURE_DIR"
+  exit 2
+fi
+
+# --- JSON engine -----------------------------------------------------------
+
+if command -v plutil >/dev/null 2>&1; then
+  JSON_ENGINE="plutil"
+elif command -v jq >/dev/null 2>&1; then
+  JSON_ENGINE="jq"
+else
+  JSON_ENGINE="none"
+fi
+
+# json_scalar FILE JQPATH  — one scalar value, or empty
+json_scalar() {
+  case "$JSON_ENGINE" in
+    jq)     jq -r "${2} // empty" "$1" 2>/dev/null ;;
+    plutil) plutil -extract "${2#.}" raw -o - "$1" 2>/dev/null ;;
+    *)      return 1 ;;
+  esac
+}
+
+# json_list FILE JQPATH  — array of scalars, one per line
+json_list() {
+  case "$JSON_ENGINE" in
+    jq)     jq -r "${2}[]? // empty" "$1" 2>/dev/null ;;
+    plutil) plutil -extract "${2#.}" json -o - "$1" 2>/dev/null \
+              | tr -d '[]"' | tr ',' '\n' | sed 's/^ *//; s/ *$//; /^$/d' ;;
+    *)      return 1 ;;
+  esac
+}
+
+# --- capture boundary: live hardware OR fixture files ----------------------
+
+capture() {
+  if [ -n "$FIXTURE_DIR" ]; then
+    local f=""
+    case "$1" in
+      system_profiler) f="$FIXTURE_DIR/system_profiler.json" ;;
+      hw_model)        f="$FIXTURE_DIR/hw_model.txt" ;;
+      sw_vers)         f="$FIXTURE_DIR/sw_vers.txt" ;;
+      ioreg)           f="$FIXTURE_DIR/ioreg.txt" ;;
+      *)               return 1 ;;
+    esac
+    [ -f "$f" ] || return 1
+    cat -- "$f"
+    return 0
+  fi
+
+  case "$1" in
+    system_profiler)
+      system_profiler -json \
+        SPHardwareDataType SPDisplaysDataType SPAirPortDataType \
+        SPAudioDataType SPStorageDataType SPNVMeDataType \
+        SPSerialATADataType SPBluetoothDataType SPThunderboltDataType \
+        SPCameraDataType SPiBridgeDataType SPMemoryDataType ;;
+    hw_model) sysctl -n hw.model ;;
+    sw_vers)  sw_vers ;;
+    ioreg)    ioreg -l -p IOService ;;
+    *)        return 1 ;;
+  esac
+}
+
+# --- gather raw inputs once ------------------------------------------------
+
+CACHE_DIR="${HOME:-/tmp}/.cache/imac-linux-check"
+mkdir -p "$CACHE_DIR" 2>/dev/null || CACHE_DIR="."
+SP_FILE="$(mktemp "$CACHE_DIR/run.XXXXXX" 2>/dev/null || printf '%s' "$CACHE_DIR/run.$$")"
+trap 'rm -f "$SP_FILE" 2>/dev/null' EXIT
+
+capture system_profiler > "$SP_FILE" 2>/dev/null || : > "$SP_FILE"
+
+HW_MODEL="$(capture hw_model 2>/dev/null | head -1 | tr -d '[:space:]')"
+SW_VERS="$(capture sw_vers 2>/dev/null || true)"
+IOREG_LINES="$(capture ioreg 2>/dev/null | grep -Ec '"(vendor|device)-id"' || true)"
+[ -n "$IOREG_LINES" ] || IOREG_LINES=0
+
+# --- detection -------------------------------------------------------------
+
+sw_field() {
+  printf '%s\n' "$SW_VERS" | awk -v k="$1" 'index($0,k)==1{sub(/^[^:]*:[ \t]*/,""); print; exit}'
+}
+MACOS_NAME="$(sw_field ProductName)"
+MACOS_VER="$(sw_field ProductVersion)"
+
+detect_t2() {
+  case "$JSON_ENGINE" in
+    jq)
+      if jq -e '((.SPiBridgeDataType // []) | length) > 0' "$SP_FILE" >/dev/null 2>&1; then
+        printf 'yes'
+      else printf 'no'; fi ;;
+    plutil)
+      if plutil -extract SPiBridgeDataType json -o - "$SP_FILE" 2>/dev/null | grep -q '[{"]'; then
+        printf 'yes'
+      else printf 'no'; fi ;;
+    *) printf 'unknown' ;;
+  esac
+}
+T2="$(detect_t2)"
+
+model_slug() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr ',' '-'; }
+MODEL_FILE=""
+MODEL_KNOWN="no"
+MARKETING_NAME=""
+if [ -n "$HW_MODEL" ]; then
+  cand="$BUNDLED_DATA/models/$(model_slug "$HW_MODEL").json"
+  if [ -f "$cand" ]; then
+    MODEL_FILE="$cand"
+    MODEL_KNOWN="yes"
+    MARKETING_NAME="$(json_scalar "$MODEL_FILE" '.marketing_name')"
+  fi
+fi
+
+DATA_SOURCE="bundled"
+
+# collect_subsystems -> TSV rows: category  status  name  id  last_verified
+collect_subsystems() {
+  [ -n "$MODEL_FILE" ] || return 0
+  json_list "$MODEL_FILE" '.components' | while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    cf="$BUNDLED_DATA/components/$id.json"
+    if [ -f "$cf" ]; then
+      printf '%s\t%s\t%s\t%s\t%s\n' \
+        "$(json_scalar "$cf" '.category')" \
+        "$(json_scalar "$cf" '.linux.status')" \
+        "$(json_scalar "$cf" '.name')" \
+        "$id" \
+        "$(json_scalar "$cf" '.linux.provenance.last_verified')"
+    else
+      printf '%s\t%s\t%s\t%s\t%s\n' "?" "unknown" "(missing component file)" "$id" ""
+    fi
+  done
+}
+
+# --- colour ----------------------------------------------------------------
+
+C_RESET=""; C_BOLD=""; C_DIM=""; C_GREEN=""; C_YELLOW=""; C_RED=""; C_CYAN=""
+color_on=0
+case "$USE_COLOR" in
+  always) color_on=1 ;;
+  never)  color_on=0 ;;
+  auto)   [ -t 1 ] && color_on=1 ;;
+esac
+if [ "$color_on" -eq 1 ]; then
+  C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'
+  C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_RED=$'\033[31m'; C_CYAN=$'\033[36m'
+fi
+
+status_color() {
+  case "$1" in
+    works)                                              printf '%s' "$C_GREEN" ;;
+    works_with_caveats|works_with_workaround|partial)   printf '%s' "$C_YELLOW" ;;
+    needs_out_of_tree_driver)                           printf '%s' "$C_YELLOW" ;;
+    broken)                                             printf '%s' "$C_RED" ;;
+    *)                                                  printf '%s' "$C_DIM" ;;
+  esac
+}
+
+# --- renderers -------------------------------------------------------------
+
+render_human() {
+  printf '%s%simac-linux-check%s — will Linux work on this iMac?\n\n' "$C_BOLD" "$C_CYAN" "$C_RESET"
+
+  printf '  %-9s %s' "Model:" "${HW_MODEL:-unknown}"
+  [ -n "$MARKETING_NAME" ] && printf '  %s(%s)%s' "$C_DIM" "$MARKETING_NAME" "$C_RESET"
+  printf '\n'
+  printf '  %-9s %s %s\n' "macOS:" "${MACOS_NAME:-unknown}" "${MACOS_VER:-}"
+  printf '  %-9s %s\n' "T2 chip:" "$T2"
+  printf '  %-9s %s snapshot\n' "Data:" "$DATA_SOURCE"
+
+  if [ "$T2" = "yes" ]; then
+    printf '\n%s%s  T2 security chip detected.%s This changes everything for keyboard,\n' "$C_BOLD" "$C_YELLOW" "$C_RESET"
+    printf '  trackpad, audio and SSD. Follow the t2linux project: https://t2linux.org\n'
+  fi
+
+  if [ "$MODEL_KNOWN" != "yes" ]; then
+    printf '\n%sThis model is not in the database yet.%s\n' "$C_YELLOW" "$C_RESET"
+    printf '  No verified data exists for %s, and support is never guessed from a\n' "${HW_MODEL:-this machine}"
+    printf '  neighbouring model. A one-click report link will be added in a later\n'
+    printf '  milestone so you can contribute this machine.\n'
+    return 0
+  fi
+
+  printf '\n  %sSubsystems%s\n' "$C_BOLD" "$C_RESET"
+  collect_subsystems | while IFS="$(printf '\t')" read -r cat st name id lv; do
+    sc="$(status_color "$st")"
+    printf '    %-9s %s[%s]%s %s' "$cat" "$sc" "$st" "$C_RESET" "$name"
+    if [ "$VERBOSE" -eq 1 ]; then
+      printf '\n              %sid=%s' "$C_DIM" "$id"
+      [ -n "$lv" ] && printf '  last_verified=%s' "$lv"
+      printf '%s' "$C_RESET"
+    fi
+    printf '\n'
+  done
+
+  printf '\n  %sPer-subsystem status, no overall score — apply your own weighting.%s\n' "$C_DIM" "$C_RESET"
+  if [ "$VERBOSE" -eq 1 ]; then
+    printf '  %sioreg vendor/device-id lines seen: %s  |  json engine: %s  |  offline: %s%s\n' \
+      "$C_DIM" "$IOREG_LINES" "$JSON_ENGINE" "$( [ "$OFFLINE" -eq 1 ] && printf yes || printf no )" "$C_RESET"
+  fi
+}
+
+render_markdown() {
+  printf '## imac-linux-check report\n\n'
+  printf '| Field | Value |\n| --- | --- |\n'
+  # shellcheck disable=SC2016  # literal backticks are intended markdown, not command substitution
+  printf '| Model | `%s`%s |\n' "${HW_MODEL:-unknown}" "$( [ -n "$MARKETING_NAME" ] && printf ' — %s' "$MARKETING_NAME" )"
+  printf '| macOS | %s %s |\n' "${MACOS_NAME:-unknown}" "${MACOS_VER:-}"
+  printf '| T2 chip | %s |\n' "$T2"
+  printf '| Data source | %s snapshot |\n' "$DATA_SOURCE"
+
+  if [ "$MODEL_KNOWN" != "yes" ]; then
+    # shellcheck disable=SC2016  # literal backticks are intended markdown
+    printf '\n> This model is not in the database yet. No verified data for `%s`.\n' "${HW_MODEL:-this machine}"
+    return 0
+  fi
+
+  printf '\n### Subsystems\n\n| Subsystem | Status | Component |\n| --- | --- | --- |\n'
+  collect_subsystems | while IFS="$(printf '\t')" read -r cat st name id lv; do
+    # shellcheck disable=SC2016  # literal backticks are intended markdown
+    printf '| %s | `%s` | %s |\n' "$cat" "$st" "$name"
+  done
+}
+
+# minimal JSON string escaping for values we emit
+json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+render_json() {
+  printf '{\n'
+  printf '  "tool_version": "%s",\n' "$(json_escape "$VERSION")"
+  printf '  "model_identifier": "%s",\n' "$(json_escape "${HW_MODEL}")"
+  printf '  "model_known": %s,\n' "$( [ "$MODEL_KNOWN" = "yes" ] && printf 'true' || printf 'false' )"
+  printf '  "marketing_name": "%s",\n' "$(json_escape "$MARKETING_NAME")"
+  printf '  "macos": { "name": "%s", "version": "%s" },\n' "$(json_escape "$MACOS_NAME")" "$(json_escape "$MACOS_VER")"
+  printf '  "t2_chip": %s,\n' "$( [ "$T2" = "yes" ] && printf 'true' || printf 'false' )"
+  printf '  "data_source": "%s",\n' "$DATA_SOURCE"
+  printf '  "offline": %s,\n' "$( [ "$OFFLINE" -eq 1 ] && printf 'true' || printf 'false' )"
+  printf '  "subsystems": ['
+  first=1
+  collect_subsystems | while IFS="$(printf '\t')" read -r cat st name id lv; do
+    [ "$first" -eq 1 ] && printf '\n' || printf ',\n'
+    first=0
+    printf '    { "id": "%s", "category": "%s", "status": "%s", "name": "%s", "last_verified": "%s" }' \
+      "$(json_escape "$id")" "$(json_escape "$cat")" "$(json_escape "$st")" \
+      "$(json_escape "$name")" "$(json_escape "$lv")"
+  done
+  # close the array (handle empty case cleanly)
+  if [ -n "$MODEL_FILE" ] && [ -n "$(collect_subsystems)" ]; then
+    printf '\n  ]\n'
+  else
+    printf ' ]\n'
+  fi
+  printf '}\n'
+}
+
+if [ "$JSON_ENGINE" = "none" ]; then
+  err "no JSON engine (plutil or jq) found; hardware detail will be limited."
+fi
+
+case "$OUTPUT" in
+  json)     render_json ;;
+  markdown) render_markdown ;;
+  *)        render_human ;;
+esac
