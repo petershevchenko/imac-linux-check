@@ -17,7 +17,7 @@
 
 set -u
 
-VERSION="0.3.0-dev"
+VERSION="0.4.0-dev"
 
 # --- locate ourselves and the bundled dataset ------------------------------
 
@@ -44,7 +44,7 @@ Options:
   --json               Machine-readable output.
   --markdown           Markdown output, for pasting into issues/forum posts.
   --verbose            Include provenance dates and raw detection detail.
-  --offline            Use bundled data only, skip any network (currently the default).
+  --offline            Skip the network; use cached or bundled data only.
   --fixture-dir DIR    Read captured tool output from DIR instead of live hardware.
   --no-color           Disable ANSI colour.
   -h, --help           Show this help.
@@ -224,10 +224,124 @@ capture() {
   esac
 }
 
+# --- data resolution tiers -------------------------------------------------
+#
+# For each data file, resolution order is:
+#   1. local cache (~/.cache/imac-linux-check/data/), if fresher than 24h
+#   2. network fetch from the CDN, pinned to a RELEASE TAG (never main)
+#   3. bundled snapshot that ships with the script
+#
+# Only inert JSON is fetched, and it is structurally validated before use;
+# anything that fails validation is skipped in favour of the next tier. The
+# tool never fails hard when the network is unavailable.
+
+CDN_OWNER_REPO="petershevchenko/imac-linux-check"
+CDN_TAG="v1"   # pinned release tag — a bad merge to main must never reach users
+# Base may be overridden for testing (e.g. a file:// tree); production is https.
+CDN_BASE="${IMAC_LC_CDN_BASE:-https://cdn.jsdelivr.net/gh/${CDN_OWNER_REPO}@${CDN_TAG}}"
+NET_TIMEOUT="${IMAC_LC_NET_TIMEOUT:-8}"
+CACHE_TTL_SECONDS=$((24 * 60 * 60))
+# The date this script's bundled data snapshot was cut (stamped at release).
+SNAPSHOT_DATE="2026-08-05"
+
+CACHE_DIR="${IMAC_LC_CACHE_DIR:-${HOME:-/tmp}/.cache/imac-linux-check}"
+mkdir -p "$CACHE_DIR" 2>/dev/null || CACHE_DIR="."
+CACHE_DATA_DIR="$CACHE_DIR/data"
+
+file_mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
+
+is_fresh() {
+  local mt now
+  mt="$(file_mtime "$1")"; [ -n "$mt" ] || return 1
+  now="$(date +%s)"
+  [ "$((now - mt))" -lt "$CACHE_TTL_SECONDS" ]
+}
+
+# validate_data FILE RELPATH — lightweight structural check (full JSON Schema
+# validation lives in CI). Confirms the file parses and has the fields we rely
+# on, which is what closes the "malformed or tampered file" gap on load.
+validate_data() {
+  local file="$1" rel="$2"
+  case "$JSON_ENGINE" in
+    jq)     jq -e . "$file" >/dev/null 2>&1 || return 1 ;;
+    plutil) plutil -lint "$file" >/dev/null 2>&1 || return 1 ;;
+    *)      return 1 ;;
+  esac
+  case "$rel" in
+    models/*)
+      [ -n "$(json_scalar "$file" model_identifier)" ] || return 1
+      [ -n "$(json_list "$file" components | head -1)" ] || return 1 ;;
+    components/*)
+      [ -n "$(json_scalar "$file" id)" ] || return 1
+      [ -n "$(json_scalar "$file" 'linux.status')" ] || return 1 ;;
+  esac
+  return 0
+}
+
+# resolve_data RELPATH — print "TIER\tPATH" for the file to read, or nothing.
+# Populates the cache from the network when it can. RELPATH is relative to
+# data/, e.g. "models/imac17-1.json".
+resolve_data() {
+  local rel="$1"
+  local cache_file="$CACHE_DATA_DIR/$rel"
+  local bundled_file="$BUNDLED_DATA/$rel"
+  local tmp
+
+  # tier 1: fresh, valid cache
+  if [ -f "$cache_file" ] && is_fresh "$cache_file" && validate_data "$cache_file" "$rel"; then
+    printf '%s\t%s' "cache" "$cache_file"; return 0
+  fi
+
+  # tier 2: network (skipped when --offline or curl is absent)
+  if [ "$OFFLINE" -ne 1 ] && command -v curl >/dev/null 2>&1; then
+    tmp="$(mktemp "$CACHE_DIR/fetch.XXXXXX" 2>/dev/null || printf '%s' "$CACHE_DIR/fetch.$$")"
+    if curl -fsSL --max-time "$NET_TIMEOUT" --max-redirs 3 "$CDN_BASE/data/$rel" -o "$tmp" 2>/dev/null \
+        && validate_data "$tmp" "$rel"; then
+      mkdir -p "$(dirname "$cache_file")" 2>/dev/null
+      if mv "$tmp" "$cache_file" 2>/dev/null; then
+        printf '%s\t%s' "network" "$cache_file"; return 0
+      fi
+      printf '%s\t%s' "network" "$tmp"; return 0
+    fi
+    rm -f "$tmp" 2>/dev/null
+  fi
+
+  # tier 2b: stale-but-valid cache beats nothing
+  if [ -f "$cache_file" ] && validate_data "$cache_file" "$rel"; then
+    printf '%s\t%s' "cache-stale" "$cache_file"; return 0
+  fi
+
+  # tier 3: bundled snapshot (shipped with the script; trusted like the code)
+  if [ -f "$bundled_file" ]; then
+    printf '%s\t%s' "bundled" "$bundled_file"; return 0
+  fi
+  return 1
+}
+
+# local_data_path RELPATH — resolved local file WITHOUT touching the network
+# (used after prefetch, so rendering never re-fetches).
+local_data_path() {
+  if [ -f "$CACHE_DATA_DIR/$1" ]; then printf '%s' "$CACHE_DATA_DIR/$1"; return 0; fi
+  if [ -f "$BUNDLED_DATA/$1" ]; then printf '%s' "$BUNDLED_DATA/$1"; return 0; fi
+  return 1
+}
+
+# snapshot_age_note — "dated 2026-08-05 (~2 months old)", falling back to the
+# bare date where the platform's `date` cannot parse it.
+snapshot_age_note() {
+  local se now months
+  se="$(date -d "$SNAPSHOT_DATE" +%s 2>/dev/null || date -j -f %Y-%m-%d "$SNAPSHOT_DATE" +%s 2>/dev/null)"
+  if [ -n "$se" ]; then
+    now="$(date +%s)"
+    months=$(( (now - se) / (30 * 24 * 60 * 60) ))
+    printf 'dated %s, ~%s months old' "$SNAPSHOT_DATE" "$months"
+  else
+    printf 'dated %s' "$SNAPSHOT_DATE"
+  fi
+}
+
 # --- gather raw inputs once ------------------------------------------------
 
-CACHE_DIR="${HOME:-/tmp}/.cache/imac-linux-check"
-mkdir -p "$CACHE_DIR" 2>/dev/null || CACHE_DIR="."
 SP_FILE="$(mktemp "$CACHE_DIR/run.XXXXXX" 2>/dev/null || printf '%s' "$CACHE_DIR/run.$$")"
 trap 'rm -f "$SP_FILE" 2>/dev/null' EXIT
 
@@ -267,16 +381,24 @@ model_slug() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr ',' '-'; }
 MODEL_FILE=""
 MODEL_KNOWN="no"
 MARKETING_NAME=""
+DATA_TIER=""
 if [ -n "$HW_MODEL" ]; then
-  cand="$BUNDLED_DATA/models/$(model_slug "$HW_MODEL").json"
-  if [ -f "$cand" ]; then
-    MODEL_FILE="$cand"
+  resolved="$(resolve_data "models/$(model_slug "$HW_MODEL").json" 2>/dev/null || true)"
+  if [ -n "$resolved" ]; then
+    DATA_TIER="${resolved%%$'\t'*}"
+    MODEL_FILE="${resolved#*$'\t'}"
     MODEL_KNOWN="yes"
     MARKETING_NAME="$(json_scalar "$MODEL_FILE" 'marketing_name')"
   fi
 fi
 
-DATA_SOURCE="bundled"
+# Human-readable label for the tier the model record came from.
+case "$DATA_TIER" in
+  network)     DATA_SOURCE="network (jsDelivr @$CDN_TAG)" ;;
+  cache)       DATA_SOURCE="cache" ;;
+  cache-stale) DATA_SOURCE="cache (stale)" ;;
+  *)           DATA_SOURCE="bundled" ;;
+esac
 
 # --- variant resolution by detected PCI id ---------------------------------
 # If a model variant's distinguish_by.pci matches a detected id, that variant
@@ -326,13 +448,23 @@ resolved_components() {
   done
 }
 
+# Prefetch each component through the tier resolver once (populating the cache),
+# so the renderers — which may call collect_subsystems several times — read from
+# local files and never re-hit the network.
+if [ "$MODEL_KNOWN" = "yes" ]; then
+  resolved_components | while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    resolve_data "components/$id.json" >/dev/null 2>&1 || true
+  done
+fi
+
 # collect_subsystems -> TSV rows: category  status  name  id  last_verified
 collect_subsystems() {
   [ -n "$MODEL_FILE" ] || return 0
   resolved_components | while IFS= read -r id; do
     [ -n "$id" ] || continue
-    cf="$BUNDLED_DATA/components/$id.json"
-    if [ -f "$cf" ]; then
+    cf="$(local_data_path "components/$id.json")"
+    if [ -n "$cf" ] && [ -f "$cf" ]; then
       printf '%s\t%s\t%s\t%s\t%s\n' \
         "$(json_scalar "$cf" 'category')" \
         "$(json_scalar "$cf" 'linux.status')" \
@@ -380,7 +512,10 @@ render_human() {
   printf '  %-9s %s %s\n' "macOS:" "${MACOS_NAME:-unknown}" "${MACOS_VER:-}"
   printf '  %-9s %s\n' "T2 chip:" "$T2"
   [ -n "$VARIANT_DESC" ] && printf '  %-9s %s\n' "Variant:" "$VARIANT_DESC"
-  printf '  %-9s %s snapshot\n' "Data:" "$DATA_SOURCE"
+  case "$DATA_TIER" in
+    network|cache|cache-stale) printf '  %-9s %s\n' "Data:" "$DATA_SOURCE" ;;
+    *)                         printf '  %-9s bundled %s(%s)%s\n' "Data:" "$C_DIM" "$(snapshot_age_note)" "$C_RESET" ;;
+  esac
 
   if [ "$T2" = "yes" ]; then
     printf '\n%s%s  T2 security chip detected.%s This changes everything for keyboard,\n' "$C_BOLD" "$C_YELLOW" "$C_RESET"
@@ -423,7 +558,7 @@ render_markdown() {
   printf '| macOS | %s %s |\n' "${MACOS_NAME:-unknown}" "${MACOS_VER:-}"
   printf '| T2 chip | %s |\n' "$T2"
   [ -n "$VARIANT_DESC" ] && printf '| Variant | %s |\n' "$VARIANT_DESC"
-  printf '| Data source | %s snapshot |\n' "$DATA_SOURCE"
+  printf '| Data source | %s (snapshot %s) |\n' "$DATA_SOURCE" "$SNAPSHOT_DATE"
 
   if [ "$MODEL_KNOWN" != "yes" ]; then
     # shellcheck disable=SC2016  # literal backticks are intended markdown
@@ -449,7 +584,8 @@ render_json() {
   printf '  "marketing_name": "%s",\n' "$(json_escape "$MARKETING_NAME")"
   printf '  "macos": { "name": "%s", "version": "%s" },\n' "$(json_escape "$MACOS_NAME")" "$(json_escape "$MACOS_VER")"
   printf '  "t2_chip": %s,\n' "$( [ "$T2" = "yes" ] && printf 'true' || printf 'false' )"
-  printf '  "data_source": "%s",\n' "$DATA_SOURCE"
+  printf '  "data_source": "%s",\n' "$(json_escape "${DATA_TIER:-bundled}")"
+  printf '  "snapshot_date": "%s",\n' "$SNAPSHOT_DATE"
   printf '  "offline": %s,\n' "$( [ "$OFFLINE" -eq 1 ] && printf 'true' || printf 'false' )"
   if [ -n "$VARIANT_DESC" ]; then
     printf '  "variant": "%s",\n' "$(json_escape "$VARIANT_DESC")"

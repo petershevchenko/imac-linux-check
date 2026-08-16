@@ -23,9 +23,14 @@ models is more useful, and more trustworthy, than one that is vaguely right abou
    in the variant's component (e.g. iMac17,1 M395 → `gpu-pci-1002-6938`). Surfaced in
    `--verbose` and `--json` (`detected_pci`, `variant`).
 
-4. **Data loading tiers.** Resolution order cache → network (jsDelivr, pinned to a release
-   tag) → bundled snapshot, with schema-validation on load and graceful offline fallback.
-   Fetch **inert JSON only** — never remote code.
+4. **Data loading tiers.** ✅ *Done.*
+   Per-file resolution cache (fresh <24h) → network (jsDelivr, pinned to tag `v1`, never
+   `main`) → bundled snapshot. Fetches **inert JSON only** over the pinned CDN, structurally
+   validates it before use, and falls back to the next tier on any failure — never fails hard
+   offline (shows the bundled snapshot's age). `--offline` skips the network entirely; cache
+   and CDN base are overridable via env for testing.
+   **Note:** the network tier is inert until a release **tag `v1`** exists on the repo (see
+   milestone 5's `release.yml`); until then every run cleanly falls back to bundled.
 
 5. **Output modes + contribution funnel.** Finalise `--json` / `--markdown` / `--verbose`
    and the pre-filled GitHub issue URL for unknown models (with the ~8000-char fallback).

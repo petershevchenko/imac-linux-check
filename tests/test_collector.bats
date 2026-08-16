@@ -8,12 +8,17 @@ setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
   COLLECTOR="$ROOT/bin/imac-linux-check"
   FIX="$ROOT/tests/fixtures"
+  # Isolate the cache and point the CDN at a non-existent file:// tree so the
+  # default (online) tests fall back to bundled data instantly, with no real
+  # network call. Individual tier tests below override IMAC_LC_CDN_BASE.
+  export IMAC_LC_CACHE_DIR="$BATS_TEST_TMPDIR/cache"
+  export IMAC_LC_CDN_BASE="file://$BATS_TEST_TMPDIR/no-such-cdn"
 }
 
 @test "--version prints the version" {
   run "$COLLECTOR" --version
   [ "$status" -eq 0 ]
-  [ "$output" = "0.3.0-dev" ]
+  [ "$output" = "0.4.0-dev" ]
 }
 
 @test "--help exits 0 and states the read-only guarantee" {
@@ -134,4 +139,57 @@ setup() {
   [ "$(echo "$output" | jq -r '.detected_pci[0]')" = "1002:6938" ]
   [ "$(echo "$output" | jq -r '.subsystems[] | select(.category=="gpu") | .id')" = "gpu-pci-1002-6938" ]
   [ "$(echo "$output" | jq -r '.subsystems[] | select(.category=="gpu") | .status')" = "unknown" ]
+}
+
+# --- data loading tiers: cache -> network -> bundled -----------------------
+
+# Build a fake CDN tree whose iMac17,1 record has a marker marketing name.
+make_fake_cdn() {
+  local dir="$1" name="$2"
+  mkdir -p "$dir/data/models"
+  jq --arg n "$name" '.marketing_name = $n' \
+    "$ROOT/data/models/imac17-1.json" > "$dir/data/models/imac17-1.json"
+}
+
+@test "offline: falls back to bundled data and reports the snapshot" {
+  run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --offline --json
+  [ "$status" -eq 0 ]
+  [ "$(echo "$output" | jq -r '.data_source')" = "bundled" ]
+  [ "$(echo "$output" | jq -r '.marketing_name')" = "iMac (Retina 5K, 27-inch, Late 2015)" ]
+}
+
+@test "network tier: fetches from the CDN, then serves from fresh cache" {
+  cdn="$BATS_TEST_TMPDIR/cdn"
+  make_fake_cdn "$cdn" "FETCHED-FROM-CDN"
+  export IMAC_LC_CDN_BASE="file://$cdn"
+
+  run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --json
+  [ "$(echo "$output" | jq -r '.data_source')" = "network" ]
+  [ "$(echo "$output" | jq -r '.marketing_name')" = "FETCHED-FROM-CDN" ]
+
+  # cache is now fresh — second run must not re-fetch
+  run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --json
+  [ "$(echo "$output" | jq -r '.data_source')" = "cache" ]
+  [ "$(echo "$output" | jq -r '.marketing_name')" = "FETCHED-FROM-CDN" ]
+}
+
+@test "validate-on-load: a malformed CDN file is rejected for bundled" {
+  cdn="$BATS_TEST_TMPDIR/cdn"
+  mkdir -p "$cdn/data/models"
+  printf '{ not valid json ' > "$cdn/data/models/imac17-1.json"
+  export IMAC_LC_CDN_BASE="file://$cdn"
+
+  run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --json
+  [ "$(echo "$output" | jq -r '.data_source')" = "bundled" ]
+  [ "$(echo "$output" | jq -r '.marketing_name')" = "iMac (Retina 5K, 27-inch, Late 2015)" ]
+}
+
+@test "offline never fetches, even when the CDN has content" {
+  cdn="$BATS_TEST_TMPDIR/cdn"
+  make_fake_cdn "$cdn" "SHOULD-NOT-APPEAR"
+  export IMAC_LC_CDN_BASE="file://$cdn"
+
+  run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --offline --json
+  [ "$(echo "$output" | jq -r '.data_source')" = "bundled" ]
+  [ "$(echo "$output" | jq -r '.marketing_name')" = "iMac (Retina 5K, 27-inch, Late 2015)" ]
 }

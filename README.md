@@ -11,8 +11,9 @@ launch is **27" iMacs**.
 > **Status: early build.** The data schema, the validation pipeline, and the first verified
 > model record (`iMac17,1`) are in place. The collector (`bin/imac-linux-check`) reads live
 > hardware (or a captured fixture), detects the model, macOS version, T2 chip, and PCI
-> vendor/device IDs, and resolves build-to-order variants from those IDs. Network data tiers
-> are next. See [`ROADMAP.md`](ROADMAP.md) for the plan.
+> vendor/device IDs, resolves build-to-order variants from those IDs, and loads data through
+> a cache → CDN → bundled fallback (validated on load, works fully offline). Output modes and
+> the unknown-model contribution link are next. See [`ROADMAP.md`](ROADMAP.md) for the plan.
 
 ## What makes it trustworthy
 
