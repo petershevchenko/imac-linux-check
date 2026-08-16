@@ -13,7 +13,7 @@ setup() {
 @test "--version prints the version" {
   run "$COLLECTOR" --version
   [ "$status" -eq 0 ]
-  [ "$output" = "0.2.0-dev" ]
+  [ "$output" = "0.3.0-dev" ]
 }
 
 @test "--help exits 0 and states the read-only guarantee" {
@@ -85,4 +85,53 @@ setup() {
   run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --json
   after="$(find "$FIX/imac17-1" -type f | sort)"
   [ "$before" = "$after" ]
+}
+
+# --- PCI id extraction (spec §6.2), the highest-risk code ------------------
+
+@test "pci_swap_id byte-swaps little-endian blobs" {
+  [ "$("$COLLECTOR" __pci-swap 02100000)" = "1002" ]
+  [ "$("$COLLECTOR" __pci-swap 19680000)" = "6819" ]
+  [ "$("$COLLECTOR" __pci-swap e4140000)" = "14e4" ]
+  [ "$("$COLLECTOR" __pci-swap a0430000)" = "43a0" ]
+  [ "$("$COLLECTOR" __pci-swap 38690000)" = "6938" ]
+}
+
+@test "pci_swap_id accepts angle brackets and uppercase, tolerates short blobs" {
+  [ "$("$COLLECTOR" __pci-swap '<02100000>')" = "1002" ]
+  [ "$("$COLLECTOR" __pci-swap 0210)" = "1002" ]
+  [ "$("$COLLECTOR" __pci-swap 'AB CD 00 00')" = "cdab" ]
+}
+
+@test "pci_swap_id rejects non-hex / too-short input" {
+  run "$COLLECTOR" __pci-swap "xyzq"
+  [ "$status" -ne 0 ]
+  run "$COLLECTOR" __pci-swap ""
+  [ "$status" -ne 0 ]
+}
+
+@test "extract_pci_ids pairs vendor:device per node, ignoring subsystem ids" {
+  run "$COLLECTOR" __pci-extract < "$FIX/imac17-1/ioreg.txt"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "1002:6819" ]
+  [ "${lines[1]}" = "14e4:43a0" ]
+  [ "${#lines[@]}" -eq 2 ]
+}
+
+# --- variant detection by PCI id -------------------------------------------
+
+@test "base config: no variant, keeps the base GPU component" {
+  run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --json
+  [ "$(echo "$output" | jq -r '.variant')" = "null" ]
+  [ "$(echo "$output" | jq -r '.detected_pci[0]')" = "1002:6819" ]
+  [ "$(echo "$output" | jq -r '.subsystems[] | select(.category=="gpu") | .id')" = "gpu-pci-1002-6819" ]
+}
+
+@test "M395 BTO GPU: variant matched, GPU component swapped" {
+  run "$COLLECTOR" --fixture-dir "$FIX/imac17-1-m395" --no-color
+  [[ "$output" == *"Variant:"*"M395"* ]]
+  run "$COLLECTOR" --fixture-dir "$FIX/imac17-1-m395" --json
+  [ "$(echo "$output" | jq -r '.detected_pci[0]')" = "1002:6938" ]
+  [ "$(echo "$output" | jq -r '.subsystems[] | select(.category=="gpu") | .id')" = "gpu-pci-1002-6938" ]
+  [ "$(echo "$output" | jq -r '.subsystems[] | select(.category=="gpu") | .status')" = "unknown" ]
 }

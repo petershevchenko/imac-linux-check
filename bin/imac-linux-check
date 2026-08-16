@@ -17,7 +17,7 @@
 
 set -u
 
-VERSION="0.2.0-dev"
+VERSION="0.3.0-dev"
 
 # --- locate ourselves and the bundled dataset ------------------------------
 
@@ -54,6 +54,55 @@ This tool is read-only and fetches inert JSON only. It never modifies the machin
 EOF
 }
 
+# --- PCI vendor/device-id extraction (the highest-risk code, see spec §6.2) --
+#
+# macOS stores these as little-endian byte arrays in the IORegistry, e.g.
+#   "vendor-id" = <02100000>   ->  0x1002
+#   "device-id" = <19680000>   ->  0x6819
+# A PCI id is a 16-bit value; the low two bytes hold it little-endian and the
+# rest is padding. Swap the first two bytes to get the canonical id, so results
+# line up with `lspci -nn` and existing Linux hardware databases.
+
+# pci_swap_id HEXBLOB  ->  4-hex-digit id, or non-zero exit on bad input
+# Accepts "<02100000>", "02100000", "0210", upper or lower case.
+pci_swap_id() {
+  local h="${1#<}"
+  h="${h%>}"
+  h="$(printf '%s' "$h" | tr 'A-F' 'a-f' | tr -cd '0-9a-f')"
+  case "$h" in
+    '' ) return 1 ;;
+  esac
+  [ "${#h}" -ge 4 ] || return 1
+  printf '%s%s' "${h:2:2}" "${h:0:2}"
+}
+
+# extract_pci_ids  — read `ioreg -l` text on stdin, print one "vendor:device"
+# per IOPCIDevice node. Pairs the two ids within a node regardless of the order
+# they are printed; ignores subsystem-vendor-id / subsystem-id.
+extract_pci_ids() {
+  local line hex v="" d=""
+  while IFS= read -r line; do
+    case "$line" in
+      *"<class IOPCIDevice"*)
+        if [ -n "$v" ] && [ -n "$d" ]; then printf '%s:%s\n' "$v" "$d"; fi
+        v=""; d="" ;;
+      *'"vendor-id" = <'*)
+        hex="$(printf '%s' "$line" | sed -n 's/.*"vendor-id" = <\([0-9a-fA-F]*\).*/\1/p')"
+        v="$(pci_swap_id "$hex" || printf '')" ;;
+      *'"device-id" = <'*)
+        hex="$(printf '%s' "$line" | sed -n 's/.*"device-id" = <\([0-9a-fA-F]*\).*/\1/p')"
+        d="$(pci_swap_id "$hex" || printf '')" ;;
+    esac
+  done
+  if [ -n "$v" ] && [ -n "$d" ]; then printf '%s:%s\n' "$v" "$d"; fi
+}
+
+# Hidden entrypoints so the two functions above can be unit-tested in isolation.
+case "${1:-}" in
+  __pci-swap)    shift; pci_swap_id "${1:-}"; exit $? ;;
+  __pci-extract) extract_pci_ids; exit 0 ;;
+esac
+
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)        usage; exit 0 ;;
@@ -86,22 +135,61 @@ else
   JSON_ENGINE="none"
 fi
 
-# json_scalar FILE JQPATH  — one scalar value, or empty
+# Paths below are engine-neutral, dot-separated, with bare numeric array
+# indices, e.g. "linux.status" or "variants.0.distinguish_by.pci". plutil takes
+# them as-is; _to_jq rewrites numeric segments to jq's [n] bracket form.
+_to_jq() {
+  printf '%s' "$1" | awk -F. '{
+    out="";
+    for (i = 1; i <= NF; i++) {
+      if ($i ~ /^[0-9]+$/) out = out "[" $i "]";
+      else out = out "." $i;
+    }
+    print out;
+  }'
+}
+
+# json_scalar FILE PATH  — one scalar value, or empty
 json_scalar() {
   case "$JSON_ENGINE" in
-    jq)     jq -r "${2} // empty" "$1" 2>/dev/null ;;
-    plutil) plutil -extract "${2#.}" raw -o - "$1" 2>/dev/null ;;
+    jq)     jq -r "$(_to_jq "$2") // empty" "$1" 2>/dev/null ;;
+    plutil) plutil -extract "$2" raw -o - "$1" 2>/dev/null ;;
     *)      return 1 ;;
   esac
 }
 
-# json_list FILE JQPATH  — array of scalars, one per line
+# json_list FILE PATH  — array of scalars, one per line
 json_list() {
   case "$JSON_ENGINE" in
-    jq)     jq -r "${2}[]? // empty" "$1" 2>/dev/null ;;
-    plutil) plutil -extract "${2#.}" json -o - "$1" 2>/dev/null \
+    jq)     jq -r "$(_to_jq "$2")[]? // empty" "$1" 2>/dev/null ;;
+    plutil) plutil -extract "$2" json -o - "$1" 2>/dev/null \
               | tr -d '[]"' | tr ',' '\n' | sed 's/^ *//; s/ *$//; /^$/d' ;;
     *)      return 1 ;;
+  esac
+}
+
+# json_count FILE PATH  — number of elements in an array (0 if absent)
+json_count() {
+  local n
+  case "$JSON_ENGINE" in
+    jq) jq -r "($(_to_jq "$2") // []) | length" "$1" 2>/dev/null ;;
+    plutil)
+      n="$(plutil -extract "$2" json -o - "$1" 2>/dev/null | grep -o '{' | wc -l | tr -d ' ')"
+      [ -n "$n" ] && printf '%s' "$n" || printf '0' ;;
+    *) printf '0' ;;
+  esac
+}
+
+# json_pairs FILE PATH  — object as "key<TAB>value" lines (keys/values here are
+# component ids: [a-z0-9-], so the plutil string-split path is safe).
+json_pairs() {
+  case "$JSON_ENGINE" in
+    jq) jq -r "$(_to_jq "$2") | to_entries[]? | \"\(.key)\t\(.value)\"" "$1" 2>/dev/null ;;
+    plutil)
+      plutil -extract "$2" json -o - "$1" 2>/dev/null \
+        | sed 's/[{}"]//g; s/, /\n/g; s/,/\n/g' \
+        | sed 's/^ *//; s/ *$//; /^$/d; s/:/\t/' ;;
+    *) return 1 ;;
   esac
 }
 
@@ -147,8 +235,10 @@ capture system_profiler > "$SP_FILE" 2>/dev/null || : > "$SP_FILE"
 
 HW_MODEL="$(capture hw_model 2>/dev/null | head -1 | tr -d '[:space:]')"
 SW_VERS="$(capture sw_vers 2>/dev/null || true)"
-IOREG_LINES="$(capture ioreg 2>/dev/null | grep -Ec '"(vendor|device)-id"' || true)"
+IOREG_RAW="$(capture ioreg 2>/dev/null || true)"
+IOREG_LINES="$(printf '%s\n' "$IOREG_RAW" | grep -Ec '"(vendor|device)-id"' || true)"
 [ -n "$IOREG_LINES" ] || IOREG_LINES=0
+DETECTED_PCI="$(printf '%s\n' "$IOREG_RAW" | extract_pci_ids)"
 
 # --- detection -------------------------------------------------------------
 
@@ -182,25 +272,73 @@ if [ -n "$HW_MODEL" ]; then
   if [ -f "$cand" ]; then
     MODEL_FILE="$cand"
     MODEL_KNOWN="yes"
-    MARKETING_NAME="$(json_scalar "$MODEL_FILE" '.marketing_name')"
+    MARKETING_NAME="$(json_scalar "$MODEL_FILE" 'marketing_name')"
   fi
 fi
 
 DATA_SOURCE="bundled"
 
+# --- variant resolution by detected PCI id ---------------------------------
+# If a model variant's distinguish_by.pci matches a detected id, that variant
+# applies and its components_replace map swaps base component ids.
+
+pci_detected() { printf '%s\n' "$DETECTED_PCI" | grep -Fxq "$1"; }
+
+matched_variant() {
+  # prints the index of the first matching variant, or nothing
+  [ -n "$MODEL_FILE" ] || return 1
+  local n i pci
+  n="$(json_count "$MODEL_FILE" variants)"
+  case "$n" in ''|*[!0-9]*) return 1 ;; esac
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    while IFS= read -r pci; do
+      [ -n "$pci" ] || continue
+      if pci_detected "$pci"; then printf '%s' "$i"; return 0; fi
+    done <<EOF
+$(json_list "$MODEL_FILE" "variants.$i.distinguish_by.pci")
+EOF
+    i=$((i + 1))
+  done
+  return 1
+}
+
+VARIANT_INDEX="$(matched_variant || true)"
+VARIANT_DESC=""
+VARIANT_REPLACEMENTS=""
+if [ -n "$VARIANT_INDEX" ]; then
+  VARIANT_DESC="$(json_scalar "$MODEL_FILE" "variants.$VARIANT_INDEX.description")"
+  VARIANT_REPLACEMENTS="$(json_pairs "$MODEL_FILE" "variants.$VARIANT_INDEX.components_replace")"
+fi
+
+# resolved_components -> component ids after applying the matched variant
+resolved_components() {
+  [ -n "$MODEL_FILE" ] || return 0
+  local id newid
+  json_list "$MODEL_FILE" 'components' | while IFS= read -r id; do
+    [ -n "$id" ] || continue
+    newid="$id"
+    if [ -n "$VARIANT_REPLACEMENTS" ]; then
+      newid="$(printf '%s\n' "$VARIANT_REPLACEMENTS" | awk -F'\t' -v k="$id" '$1==k{print $2; exit}')"
+      [ -n "$newid" ] || newid="$id"
+    fi
+    printf '%s\n' "$newid"
+  done
+}
+
 # collect_subsystems -> TSV rows: category  status  name  id  last_verified
 collect_subsystems() {
   [ -n "$MODEL_FILE" ] || return 0
-  json_list "$MODEL_FILE" '.components' | while IFS= read -r id; do
+  resolved_components | while IFS= read -r id; do
     [ -n "$id" ] || continue
     cf="$BUNDLED_DATA/components/$id.json"
     if [ -f "$cf" ]; then
       printf '%s\t%s\t%s\t%s\t%s\n' \
-        "$(json_scalar "$cf" '.category')" \
-        "$(json_scalar "$cf" '.linux.status')" \
-        "$(json_scalar "$cf" '.name')" \
+        "$(json_scalar "$cf" 'category')" \
+        "$(json_scalar "$cf" 'linux.status')" \
+        "$(json_scalar "$cf" 'name')" \
         "$id" \
-        "$(json_scalar "$cf" '.linux.provenance.last_verified')"
+        "$(json_scalar "$cf" 'linux.provenance.last_verified')"
     else
       printf '%s\t%s\t%s\t%s\t%s\n' "?" "unknown" "(missing component file)" "$id" ""
     fi
@@ -241,6 +379,7 @@ render_human() {
   printf '\n'
   printf '  %-9s %s %s\n' "macOS:" "${MACOS_NAME:-unknown}" "${MACOS_VER:-}"
   printf '  %-9s %s\n' "T2 chip:" "$T2"
+  [ -n "$VARIANT_DESC" ] && printf '  %-9s %s\n' "Variant:" "$VARIANT_DESC"
   printf '  %-9s %s snapshot\n' "Data:" "$DATA_SOURCE"
 
   if [ "$T2" = "yes" ]; then
@@ -270,6 +409,7 @@ render_human() {
 
   printf '\n  %sPer-subsystem status, no overall score — apply your own weighting.%s\n' "$C_DIM" "$C_RESET"
   if [ "$VERBOSE" -eq 1 ]; then
+    printf '  %sdetected PCI ids: %s%s\n' "$C_DIM" "$(printf '%s' "$DETECTED_PCI" | tr '\n' ' ')" "$C_RESET"
     printf '  %sioreg vendor/device-id lines seen: %s  |  json engine: %s  |  offline: %s%s\n' \
       "$C_DIM" "$IOREG_LINES" "$JSON_ENGINE" "$( [ "$OFFLINE" -eq 1 ] && printf yes || printf no )" "$C_RESET"
   fi
@@ -282,6 +422,7 @@ render_markdown() {
   printf '| Model | `%s`%s |\n' "${HW_MODEL:-unknown}" "$( [ -n "$MARKETING_NAME" ] && printf ' — %s' "$MARKETING_NAME" )"
   printf '| macOS | %s %s |\n' "${MACOS_NAME:-unknown}" "${MACOS_VER:-}"
   printf '| T2 chip | %s |\n' "$T2"
+  [ -n "$VARIANT_DESC" ] && printf '| Variant | %s |\n' "$VARIANT_DESC"
   printf '| Data source | %s snapshot |\n' "$DATA_SOURCE"
 
   if [ "$MODEL_KNOWN" != "yes" ]; then
@@ -310,6 +451,19 @@ render_json() {
   printf '  "t2_chip": %s,\n' "$( [ "$T2" = "yes" ] && printf 'true' || printf 'false' )"
   printf '  "data_source": "%s",\n' "$DATA_SOURCE"
   printf '  "offline": %s,\n' "$( [ "$OFFLINE" -eq 1 ] && printf 'true' || printf 'false' )"
+  if [ -n "$VARIANT_DESC" ]; then
+    printf '  "variant": "%s",\n' "$(json_escape "$VARIANT_DESC")"
+  else
+    printf '  "variant": null,\n'
+  fi
+  printf '  "detected_pci": ['
+  firstp=1
+  printf '%s\n' "$DETECTED_PCI" | while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    [ "$firstp" -eq 1 ] && printf ' "%s"' "$(json_escape "$p")" || printf ', "%s"' "$(json_escape "$p")"
+    firstp=0
+  done
+  printf ' ],\n'
   printf '  "subsystems": ['
   first=1
   collect_subsystems | while IFS="$(printf '\t')" read -r cat st name id lv; do

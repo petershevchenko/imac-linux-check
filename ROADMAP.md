@@ -15,9 +15,13 @@ models is more useful, and more trustworthy, than one that is vaguely right abou
    model identifier, macOS version, T2 presence, bundled-data lookup. First captured
    fixture + `bats` tests.
 
-3. **PCI vendor/device-id extraction.** The one genuinely hard part (§6.2): parse the
-   little-endian byte arrays from `ioreg`, byte-swap, format as `1002:6819`. Isolated
-   function with dedicated unit tests. Enables variant/component matching by PCI ID.
+3. **PCI vendor/device-id extraction.** ✅ *Done.*
+   `pci_swap_id` (byte-swaps the little-endian `ioreg` blobs to `1002:6819` form) and
+   `extract_pci_ids` (pairs vendor:device per IOPCIDevice node), both isolated with unit
+   tests via hidden `__pci-swap` / `__pci-extract` entrypoints. Detected IDs now drive
+   **variant detection**: a BTO GPU whose PCI id matches a variant's `distinguish_by` swaps
+   in the variant's component (e.g. iMac17,1 M395 → `gpu-pci-1002-6938`). Surfaced in
+   `--verbose` and `--json` (`detected_pci`, `variant`).
 
 4. **Data loading tiers.** Resolution order cache → network (jsDelivr, pinned to a release
    tag) → bundled snapshot, with schema-validation on load and graceful offline fallback.
