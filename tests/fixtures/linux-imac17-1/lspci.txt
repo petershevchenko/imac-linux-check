@@ -1,0 +1,14 @@
+00:00.0 Host bridge [0600]: Intel Corporation Skylake Host Bridge [8086:191f] (rev 07)
+01:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] Pitcairn PRO [Radeon R9 M380 / M390] [1002:6819]
+	Subsystem: Apple Inc. [106b:014e]
+	Kernel driver in use: amdgpu
+	Kernel modules: amdgpu
+00:1f.3 Audio device [0403]: Intel Corporation Sunrise Point-H HD Audio [8086:a170] (rev 31)
+	Kernel driver in use: snd_hda_intel
+	Kernel modules: snd_hda_intel
+02:00.0 Ethernet controller [0200]: Broadcom Inc. and subsidiaries NetXtreme BCM57766 Gigabit Ethernet PCIe [14e4:1686] (rev 01)
+	Kernel driver in use: tg3
+	Kernel modules: tg3
+03:00.0 Network controller [0280]: Broadcom Inc. and subsidiaries BCM4360 802.11ac Wireless Network Adapter [14e4:43a0] (rev 03)
+	Kernel driver in use: wl
+	Kernel modules: bcma, wl

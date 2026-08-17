@@ -8,6 +8,13 @@ Apple ships a small number of fixed configurations per model, and the model iden
 fallback path for build-to-order options — not a general hardware-matching engine. Scope at
 launch is **27" iMacs**.
 
+Two collectors share one dataset:
+
+- **`bin/imac-linux-check`** (macOS, zsh) — run it *before* installing Linux to see what will
+  and won't work.
+- **`bin/imac-linux-probe`** (Linux, bash) — run it on an iMac *already* running Linux to see
+  what actually bound, and to contribute that back as direct-observation data.
+
 > **Status: early build.** The data schema, the validation pipeline, and the first verified
 > model record (`iMac17,1`) are in place. The collector (`bin/imac-linux-check`) reads live
 > hardware (or a captured fixture), detects the model, macOS version, T2 chip, and PCI

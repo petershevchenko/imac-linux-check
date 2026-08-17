@@ -45,10 +45,21 @@ models is more useful, and more trustworthy, than one that is vaguely right abou
 6. **Populate `iMac17,1` fully, then expand.** Fill remaining subsystems from verified
    observation, then add more 27" iMac identifiers.
 
-## Companion tool: a Linux-side collector
+## Companion tool: a Linux-side collector — ✅ first version shipped
 
-**Goal:** a script that runs on **Linux** (for people who already installed it) and produces
-the *same* structured hardware report as the macOS collector — same JSON shape, same PCI
+`bin/imac-linux-probe` (bash, no hard deps) runs on an iMac **already running Linux**. It
+reports what actually bound (live kernel drivers via `lspci`/sysfs), cross-references the
+dataset, and prints a pre-filled contribution report whose `provenance` block is filled in
+with the live kernel and distro and `verified_by: "direct observation on hardware"` — the
+strongest kind of evidence. `--fixture-dir` (captured `lspci -nnk` + dmi) makes it testable
+in CI; `tests/test_linux_probe.bats` covers it.
+
+Still open on the Linux side: fold its reports into the same issue templates end-to-end,
+richer subsystem coverage (Bluetooth/USB, thermal), and optionally sharing the data-tier and
+rendering code with the macOS collector instead of the current light duplication.
+
+**Original goal (kept for reference):** a script that runs on **Linux** and produces the
+*same* structured hardware report as the macOS collector — same JSON shape, same PCI
 `vendor:device` IDs.
 
 Why it's worth building:

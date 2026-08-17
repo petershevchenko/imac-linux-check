@@ -39,12 +39,12 @@ jobs:
             .github/ISSUE_TEMPLATE/config.yml
 
   shell:
-    name: shellcheck collector
+    name: shellcheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck bin/imac-linux-check
+        run: shellcheck bin/imac-linux-check bin/imac-linux-probe
 
   collector:
     name: collector (bats)
@@ -53,5 +53,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install zsh, jq, bats
         run: sudo apt-get update && sudo apt-get install -y zsh jq bats
-      - name: Run collector tests against fixtures
+      - name: Run macOS collector tests against fixtures
         run: bats tests/test_collector.bats
+      - name: Run Linux probe tests against fixtures
+        run: bats tests/test_linux_probe.bats

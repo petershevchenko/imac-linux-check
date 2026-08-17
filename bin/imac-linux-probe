@@ -1,0 +1,327 @@
+#!/usr/bin/env bash
+#
+# imac-linux-probe — the Linux-side companion to imac-linux-check.
+#
+# Run this on an iMac that is ALREADY running Linux. It reports what actually
+# bound to your hardware (live kernel drivers), cross-references the dataset,
+# and produces a direct-observation report you can contribute back — the most
+# valuable kind of data, because it is observed rather than predicted.
+#
+# HARD RULES (same as the macOS collector):
+#   * READ-ONLY on the host. Reads /sys and runs read-only tools only.
+#   * Data only, never code. Parses inert JSON; never fetches/executes remote code.
+#
+# No hard dependencies: PCI data comes from lspci when present, else from
+# sysfs. Dataset cross-reference uses jq when present, and degrades gracefully.
+
+set -u
+
+VERSION="0.1.0-dev"
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+BUNDLED_DATA="$SCRIPT_DIR/../data"
+REPO="petershevchenko/imac-linux-check"
+
+FIXTURE_DIR=""
+OUTPUT="human"
+VERBOSE=0
+USE_COLOR="auto"
+
+err() { printf '%s\n' "imac-linux-probe: $*" >&2; }
+
+usage() {
+  cat <<'EOF'
+imac-linux-probe — what actually works on this iMac under Linux?
+
+Usage: imac-linux-probe [options]
+
+Options:
+  --json               Machine-readable output (the payload to contribute).
+  --markdown           Markdown output, for pasting into an issue.
+  --verbose            Include every detected PCI device, not just known subsystems.
+  --fixture-dir DIR    Read captured output from DIR instead of the live system.
+  --no-color           Disable ANSI colour.
+  -h, --help           Show this help.
+  --version            Print version.
+
+Read-only: inspects /sys and runs read-only tools; never modifies the machine.
+EOF
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)       usage; exit 0 ;;
+    --version)       printf '%s\n' "$VERSION"; exit 0 ;;
+    --json)          OUTPUT="json"; shift ;;
+    --markdown)      OUTPUT="markdown"; shift ;;
+    --verbose)       VERBOSE=1; shift ;;
+    --no-color)      USE_COLOR="never"; shift ;;
+    --fixture-dir)   FIXTURE_DIR="${2:-}"; shift 2 ;;
+    --fixture-dir=*) FIXTURE_DIR="${1#*=}"; shift ;;
+    --)              shift; break ;;
+    -*)              err "unknown option: $1"; usage >&2; exit 2 ;;
+    *)               err "unexpected argument: $1"; exit 2 ;;
+  esac
+done
+
+if [ -n "$FIXTURE_DIR" ] && [ ! -d "$FIXTURE_DIR" ]; then
+  err "fixture dir not found: $FIXTURE_DIR"; exit 2
+fi
+
+command -v jq >/dev/null 2>&1 && HAVE_JQ=1 || HAVE_JQ=0
+
+# --- capture boundary: live system OR fixture files ------------------------
+
+capture() {
+  if [ -n "$FIXTURE_DIR" ]; then
+    local f=""
+    case "$1" in
+      product_name) f="$FIXTURE_DIR/product_name" ;;
+      uname_r)      f="$FIXTURE_DIR/uname_r" ;;
+      os_release)   f="$FIXTURE_DIR/os-release" ;;
+      lspci)        f="$FIXTURE_DIR/lspci.txt" ;;
+      *)            return 1 ;;
+    esac
+    [ -f "$f" ] || return 1
+    cat -- "$f"; return 0
+  fi
+
+  case "$1" in
+    product_name) cat /sys/class/dmi/id/product_name 2>/dev/null ;;
+    uname_r)      uname -r ;;
+    os_release)   cat /etc/os-release 2>/dev/null ;;
+    lspci)
+      if command -v lspci >/dev/null 2>&1; then
+        lspci -nnk
+      else
+        sysfs_to_lspci
+      fi ;;
+    *) return 1 ;;
+  esac
+}
+
+# sysfs_to_lspci — synthesise the lspci lines we parse, from /sys, so the tool
+# still works when pciutils is not installed.
+sysfs_to_lspci() {
+  local dev slot vendor device class drv
+  for dev in /sys/bus/pci/devices/*; do
+    [ -e "$dev/vendor" ] || continue
+    slot="$(basename "$dev")"; slot="${slot#0000:}"
+    vendor="$(cat "$dev/vendor" 2>/dev/null)"; vendor="${vendor#0x}"
+    device="$(cat "$dev/device" 2>/dev/null)"; device="${device#0x}"
+    class="$(cat "$dev/class" 2>/dev/null)"; class="${class#0x}"
+    drv="$(basename "$(readlink "$dev/driver" 2>/dev/null)" 2>/dev/null)"
+    printf '%s Class [%s]: [%s:%s]\n' "$slot" "${class:0:4}" "$vendor" "$device"
+    [ -n "$drv" ] && printf '\tKernel driver in use: %s\n' "$drv"
+  done
+}
+
+# --- parse detected PCI devices --------------------------------------------
+# Emit TSV rows: slot  class  vendor:device  driver
+
+pci_records() {
+  capture lspci 2>/dev/null | awk '
+    /^[0-9a-f]+:[0-9a-f]+\.[0-9a-f]/ {
+      if (slot != "") print slot "\t" cls "\t" pci "\t" drv;
+      slot = $1; drv = "none"; cls = "0000"; pci = "";
+      if (match($0, /\[[0-9a-f][0-9a-f][0-9a-f][0-9a-f]\]/))
+        cls = substr($0, RSTART + 1, 4);
+      s = $0;
+      while (match(s, /\[[0-9a-f]{4}:[0-9a-f]{4}\]/)) {
+        pci = substr(s, RSTART + 1, 9);
+        s = substr(s, RSTART + RLENGTH);
+      }
+      next;
+    }
+    /Kernel driver in use:/ { drv = $NF }
+    END { if (slot != "") print slot "\t" cls "\t" pci "\t" drv }
+  '
+}
+
+class_category() {
+  case "$1" in
+    0300|0302|0380) printf 'gpu' ;;
+    0280)           printf 'wifi' ;;
+    0200)           printf 'ethernet' ;;
+    0403)           printf 'audio' ;;
+    0108)           printf 'storage' ;;
+    0106|0104|0101) printf 'storage' ;;
+    *)              printf 'other' ;;
+  esac
+}
+
+# dataset_status PCIID -> "componentid\tstatus" from bundled data, or empty
+dataset_status() {
+  [ "$HAVE_JQ" -eq 1 ] || return 1
+  local pci="$1" f
+  for f in "$BUNDLED_DATA"/components/*.json; do
+    [ -f "$f" ] || continue
+    if jq -e --arg p "$pci" '((.match.pci // []) | index($p)) != null' "$f" >/dev/null 2>&1; then
+      jq -r '.id + "\t" + .linux.status' "$f"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# --- gather ----------------------------------------------------------------
+
+MODEL="$(capture product_name 2>/dev/null | head -1 | tr -d '[:space:]')"
+KERNEL="$(capture uname_r 2>/dev/null | head -1 | tr -d '[:space:]')"
+DISTRO="$(capture os_release 2>/dev/null | awk -F= '/^PRETTY_NAME=/{gsub(/"/,"",$2); print $2; exit}')"
+TODAY="$(date -u +%Y-%m-%d 2>/dev/null)"
+
+# --- colour ----------------------------------------------------------------
+
+C_RESET=""; C_BOLD=""; C_DIM=""; C_GREEN=""; C_RED=""; C_CYAN=""
+color_on=0
+case "$USE_COLOR" in
+  never) color_on=0 ;;
+  auto)  [ -t 1 ] && color_on=1 ;;
+esac
+if [ "$color_on" -eq 1 ]; then
+  C_RESET=$'\033[0m'; C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'
+  C_GREEN=$'\033[32m'; C_RED=$'\033[31m'; C_CYAN=$'\033[36m'
+fi
+
+# emit_rows -> TSV: category  pci  driver  bound(yes/no)  dataset_id  dataset_status
+# (only known subsystems unless --verbose)
+emit_rows() {
+  local slot cls pci drv cat ds dsid dsst
+  pci_records | while IFS="$(printf '\t')" read -r slot cls pci drv; do
+    [ -n "$pci" ] || continue
+    cat="$(class_category "$cls")"
+    if [ "$cat" = "other" ] && [ "$VERBOSE" -ne 1 ]; then continue; fi
+    dsid=""; dsst=""
+    if ds="$(dataset_status "$pci")"; then
+      dsid="${ds%%$'\t'*}"; dsst="${ds#*$'\t'}"
+    fi
+    if [ "$drv" = "none" ] || [ -z "$drv" ]; then bound="no"; drv="${drv:-none}"; else bound="yes"; fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$cat" "$pci" "$drv" "$bound" "$dsid" "$dsst"
+  done
+}
+
+# --- renderers -------------------------------------------------------------
+
+render_human() {
+  printf '%s%simac-linux-probe%s — what actually works on this iMac under Linux?\n\n' "$C_BOLD" "$C_CYAN" "$C_RESET"
+  printf '  %-8s %s\n' "Model:" "${MODEL:-unknown}"
+  printf '  %-8s %s\n' "Kernel:" "${KERNEL:-unknown}"
+  printf '  %-8s %s\n' "Distro:" "${DISTRO:-unknown}"
+
+  printf '\n  %sDetected devices — live driver vs dataset%s\n' "$C_BOLD" "$C_RESET"
+  emit_rows | while IFS="$(printf '\t')" read -r cat pci drv bound dsid dsst; do
+    if [ "$bound" = "yes" ]; then bc="$C_GREEN"; else bc="$C_RED"; fi
+    printf '    %-9s %s  driver=%s%s%s' "$cat" "$pci" "$bc" "$drv" "$C_RESET"
+    if [ -n "$dsst" ]; then
+      printf '   %sdataset: %s%s' "$C_DIM" "$dsst" "$C_RESET"
+    else
+      printf '   %sdataset: (not recorded)%s' "$C_DIM" "$C_RESET"
+    fi
+    printf '\n'
+  done
+
+  printf '\n  %sA bound driver is a strong "works" signal; driver=none usually means it does not.%s\n' "$C_DIM" "$C_RESET"
+  if [ "$HAVE_JQ" -ne 1 ]; then
+    printf '  %s(install jq for dataset cross-reference)%s\n' "$C_DIM" "$C_RESET"
+  fi
+
+  url="$(report_url || true)"
+  printf '\n  %sContribute this (direct observation, kernel %s):%s\n' "$C_BOLD" "${KERNEL:-?}" "$C_RESET"
+  if [ -n "$url" ]; then
+    printf '  %s\n' "$url"
+  else
+    printf '  Report is large — open %s and paste the --json output.\n' "https://github.com/$REPO/issues/new?template=new-model.yml"
+  fi
+}
+
+render_markdown() {
+  printf '## imac-linux-probe report (Linux, direct observation)\n\n'
+  printf '| Field | Value |\n| --- | --- |\n'
+  # shellcheck disable=SC2016  # literal backticks are intended markdown
+  printf '| Model | `%s` |\n' "${MODEL:-unknown}"
+  printf '| Kernel | %s |\n' "${KERNEL:-unknown}"
+  printf '| Distro | %s |\n' "${DISTRO:-unknown}"
+  printf '\n| Subsystem | PCI id | Bound driver | Dataset status |\n| --- | --- | --- | --- |\n'
+  emit_rows | while IFS="$(printf '\t')" read -r cat pci drv bound dsid dsst; do
+    # shellcheck disable=SC2016  # literal backticks are intended markdown
+    printf '| %s | `%s` | `%s` | %s |\n' "$cat" "$pci" "$drv" "${dsst:-(not recorded)}"
+  done
+}
+
+json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+render_json() {
+  printf '{\n'
+  printf '  "tool": "imac-linux-probe",\n'
+  printf '  "tool_version": "%s",\n' "$(json_escape "$VERSION")"
+  printf '  "model_identifier": "%s",\n' "$(json_escape "$MODEL")"
+  printf '  "kernel": "%s",\n' "$(json_escape "$KERNEL")"
+  printf '  "distro": "%s",\n' "$(json_escape "$DISTRO")"
+  printf '  "provenance": {\n'
+  printf '    "last_verified": "%s",\n' "$TODAY"
+  printf '    "verified_kernel": "%s",\n' "$(json_escape "$KERNEL")"
+  printf '    "verified_distro": "%s",\n' "$(json_escape "$DISTRO")"
+  printf '    "verified_by": "direct observation on hardware",\n'
+  printf '    "sources": []\n'
+  printf '  },\n'
+  printf '  "devices": ['
+  local first=1
+  emit_rows | while IFS="$(printf '\t')" read -r cat pci drv bound dsid dsst; do
+    [ "$first" -eq 1 ] && printf '\n' || printf ',\n'
+    first=0
+    printf '    { "category": "%s", "pci": "%s", "driver": "%s", "bound": %s, "dataset_component": %s, "dataset_status": %s }' \
+      "$(json_escape "$cat")" "$(json_escape "$pci")" "$(json_escape "$drv")" \
+      "$( [ "$bound" = "yes" ] && printf 'true' || printf 'false' )" \
+      "$( [ -n "$dsid" ] && printf '"%s"' "$(json_escape "$dsid")" || printf 'null' )" \
+      "$( [ -n "$dsst" ] && printf '"%s"' "$(json_escape "$dsst")" || printf 'null' )"
+  done
+  if [ -n "$(emit_rows)" ]; then printf '\n  ]\n'; else printf ' ]\n'; fi
+  printf '}\n'
+}
+
+# --- contribution funnel ---------------------------------------------------
+
+ISSUE_MAX_URL="${IMAC_LC_ISSUE_MAX_URL:-8000}"
+
+urlencode() {
+  local s="$1" i=0 c out=""
+  local LC_ALL=C
+  while [ "$i" -lt "${#s}" ]; do
+    c="${s:$i:1}"
+    case "$c" in
+      [a-zA-Z0-9.~_-]) out="$out$c" ;;
+      *)               out="$out$(printf '%%%02X' "'$c")" ;;
+    esac
+    i=$((i + 1))
+  done
+  printf '%s' "$out"
+}
+
+build_issue_body() {
+  printf 'Reported by imac-linux-probe %s (direct observation on hardware).\n\n' "$VERSION"
+  printf -- '- Model: %s\n- Kernel: %s\n- Distro: %s\n\n' "${MODEL:-unknown}" "${KERNEL:-unknown}" "${DISTRO:-unknown}"
+  printf 'What works / what does not (please edit):\n\n'
+  emit_rows | while IFS="$(printf '\t')" read -r cat pci drv bound dsid dsst; do
+    printf -- '- %s [%s]: driver=%s (%s)\n' "$cat" "$pci" "$drv" \
+      "$( [ "$bound" = yes ] && echo bound || echo 'not bound' )"
+  done
+  printf '\nCollector output:\n\n```json\n'
+  render_json
+  printf '```\n'
+}
+
+report_url() {
+  local title body url
+  title="$(urlencode "Linux data: ${MODEL:-unknown iMac} (kernel ${KERNEL:-?})")"
+  body="$(urlencode "$(build_issue_body)")"
+  url="https://github.com/$REPO/issues/new?labels=new-model&title=$title&body=$body"
+  [ "${#url}" -le "$ISSUE_MAX_URL" ] || return 1
+  printf '%s' "$url"
+}
+
+case "$OUTPUT" in
+  json)     render_json ;;
+  markdown) render_markdown ;;
+  *)        render_human ;;
+esac
