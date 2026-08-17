@@ -18,7 +18,7 @@ setup() {
 @test "--version prints the version" {
   run "$COLLECTOR" --version
   [ "$status" -eq 0 ]
-  [ "$output" = "0.5.0-dev" ]
+  [ "$output" = "0.6.0-dev" ]
 }
 
 @test "--help exits 0 and states the read-only guarantee" {
@@ -43,6 +43,24 @@ setup() {
 @test "known model: T2 reported absent" {
   run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --no-color
   [[ "$output" == *"T2 chip:"*"no"* ]]
+}
+
+@test "surfaces caveats and workaround fixes in default output" {
+  run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --no-color --offline
+  [[ "$output" == *"Panel brightness control is unavailable."* ]]
+  [[ "$output" == *"fix:"*"Remove nomodeset"* ]]
+}
+
+@test "verbose adds caveat detail and exact kernel parameters" {
+  run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --no-color --offline --verbose
+  [[ "$output" == *"remove kernel params:"*"nomodeset"* ]]
+  [[ "$output" == *"add kernel params:"*"amdgpu.si_support=1"* ]]
+}
+
+@test "markdown has a Caveats & fixes section" {
+  run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --markdown --offline
+  [[ "$output" == *"### Caveats & fixes"* ]]
+  [[ "$output" == *"caveat (major):"* ]]
 }
 
 @test "--json is valid and reports a known model with two subsystems" {

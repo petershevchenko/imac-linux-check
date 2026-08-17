@@ -17,7 +17,7 @@
 
 set -u
 
-VERSION="0.5.0-dev"
+VERSION="0.6.0-dev"
 
 # --- locate ourselves and the bundled dataset ------------------------------
 
@@ -458,22 +458,72 @@ if [ "$MODEL_KNOWN" = "yes" ]; then
   done
 fi
 
-# collect_subsystems -> TSV rows: category  status  name  id  last_verified
+# collect_subsystems -> TSV rows: category  status  name  id  last_verified  file
 collect_subsystems() {
   [ -n "$MODEL_FILE" ] || return 0
   resolved_components | while IFS= read -r id; do
     [ -n "$id" ] || continue
     cf="$(local_data_path "components/$id.json")"
     if [ -n "$cf" ] && [ -f "$cf" ]; then
-      printf '%s\t%s\t%s\t%s\t%s\n' \
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
         "$(json_scalar "$cf" 'category')" \
         "$(json_scalar "$cf" 'linux.status')" \
         "$(json_scalar "$cf" 'name')" \
         "$id" \
-        "$(json_scalar "$cf" 'linux.provenance.last_verified')"
+        "$(json_scalar "$cf" 'linux.provenance.last_verified')" \
+        "$cf"
     else
-      printf '%s\t%s\t%s\t%s\t%s\n' "?" "unknown" "(missing component file)" "$id" ""
+      printf '%s\t%s\t%s\t%s\t%s\t%s\n' "?" "unknown" "(missing component file)" "$id" "" ""
     fi
+  done
+}
+
+# severity_color SEV -> ANSI colour for a caveat severity
+severity_color() {
+  case "$1" in
+    major)    printf '%s' "$C_RED" ;;
+    moderate) printf '%s' "$C_YELLOW" ;;
+    *)        printf '%s' "$C_DIM" ;;
+  esac
+}
+
+# render_caveats FILE INDENT — one line per caveat; detail added under --verbose
+render_caveats() {
+  local f="$1" ind="$2" n i sev sum det
+  [ -n "$f" ] || return 0
+  n="$(json_count "$f" 'linux.caveats')"; case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    sev="$(json_scalar "$f" "linux.caveats.$i.severity")"
+    sum="$(json_scalar "$f" "linux.caveats.$i.summary")"
+    printf '%s%s!%s %s %s(%s)%s\n' "$ind" "$(severity_color "$sev")" "$C_RESET" "$sum" "$C_DIM" "$sev" "$C_RESET"
+    if [ "$VERBOSE" -eq 1 ]; then
+      det="$(json_scalar "$f" "linux.caveats.$i.detail")"
+      [ -n "$det" ] && printf '%s  %s%s%s\n' "$ind" "$C_DIM" "$det" "$C_RESET"
+    fi
+    i=$((i + 1))
+  done
+}
+
+# render_workarounds FILE INDENT — the fix line per workaround; problem and
+# kernel params added under --verbose
+render_workarounds() {
+  local f="$1" ind="$2" n i fix problem add rem
+  [ -n "$f" ] || return 0
+  n="$(json_count "$f" 'linux.workarounds')"; case "$n" in ''|*[!0-9]*) n=0 ;; esac
+  i=0
+  while [ "$i" -lt "$n" ]; do
+    fix="$(json_scalar "$f" "linux.workarounds.$i.fix")"
+    printf '%s%s\xe2\x86\x92 fix:%s %s\n' "$ind" "$C_CYAN" "$C_RESET" "$fix"
+    if [ "$VERBOSE" -eq 1 ]; then
+      problem="$(json_scalar "$f" "linux.workarounds.$i.problem")"
+      [ -n "$problem" ] && printf '%s   %swhen: %s%s\n' "$ind" "$C_DIM" "$problem" "$C_RESET"
+      add="$(json_list "$f" "linux.workarounds.$i.kernel_params_add" | tr '\n' ' ' | sed 's/ *$//')"
+      rem="$(json_list "$f" "linux.workarounds.$i.kernel_params_remove" | tr '\n' ' ' | sed 's/ *$//')"
+      [ -n "$add" ] && printf '%s   %sadd kernel params: %s%s\n' "$ind" "$C_DIM" "$add" "$C_RESET"
+      [ -n "$rem" ] && printf '%s   %sremove kernel params: %s%s\n' "$ind" "$C_DIM" "$rem" "$C_RESET"
+    fi
+    i=$((i + 1))
   done
 }
 
@@ -540,7 +590,7 @@ render_human() {
   fi
 
   printf '\n  %sSubsystems%s\n' "$C_BOLD" "$C_RESET"
-  collect_subsystems | while IFS="$(printf '\t')" read -r cat st name id lv; do
+  collect_subsystems | while IFS="$(printf '\t')" read -r cat st name id lv cf; do
     sc="$(status_color "$st")"
     printf '    %-9s %s[%s]%s %s' "$cat" "$sc" "$st" "$C_RESET" "$name"
     if [ "$VERBOSE" -eq 1 ]; then
@@ -549,6 +599,8 @@ render_human() {
       printf '%s' "$C_RESET"
     fi
     printf '\n'
+    render_caveats "$cf" "              "
+    render_workarounds "$cf" "              "
   done
 
   printf '\n  %sPer-subsystem status, no overall score — apply your own weighting.%s\n' "$C_DIM" "$C_RESET"
@@ -580,10 +632,34 @@ render_markdown() {
   fi
 
   printf '\n### Subsystems\n\n| Subsystem | Status | Component |\n| --- | --- | --- |\n'
-  collect_subsystems | while IFS="$(printf '\t')" read -r cat st name id lv; do
+  collect_subsystems | while IFS="$(printf '\t')" read -r cat st name id lv cf; do
     # shellcheck disable=SC2016  # literal backticks are intended markdown
     printf '| %s | `%s` | %s |\n' "$cat" "$st" "$name"
   done
+
+  # Caveats & fixes, only for subsystems that have any.
+  details="$(collect_subsystems | while IFS="$(printf '\t')" read -r cat st name id lv cf; do
+    [ -n "$cf" ] || continue
+    ncav="$(json_count "$cf" 'linux.caveats')"; case "$ncav" in ''|*[!0-9]*) ncav=0 ;; esac
+    nwork="$(json_count "$cf" 'linux.workarounds')"; case "$nwork" in ''|*[!0-9]*) nwork=0 ;; esac
+    [ "$ncav" -eq 0 ] && [ "$nwork" -eq 0 ] && continue
+    printf '\n**%s — %s**\n\n' "$cat" "$name"
+    i=0
+    while [ "$i" -lt "$ncav" ]; do
+      printf -- '- caveat (%s): %s\n' \
+        "$(json_scalar "$cf" "linux.caveats.$i.severity")" \
+        "$(json_scalar "$cf" "linux.caveats.$i.summary")"
+      i=$((i + 1))
+    done
+    i=0
+    while [ "$i" -lt "$nwork" ]; do
+      printf -- '- fix: %s\n' "$(json_scalar "$cf" "linux.workarounds.$i.fix")"
+      i=$((i + 1))
+    done
+  done)"
+  if [ -n "$details" ]; then
+    printf '\n### Caveats & fixes\n%s\n' "$details"
+  fi
 }
 
 # minimal JSON string escaping for values we emit
@@ -615,7 +691,7 @@ render_json() {
   printf ' ],\n'
   printf '  "subsystems": ['
   first=1
-  collect_subsystems | while IFS="$(printf '\t')" read -r cat st name id lv; do
+  collect_subsystems | while IFS="$(printf '\t')" read -r cat st name id lv cf; do
     [ "$first" -eq 1 ] && printf '\n' || printf ',\n'
     first=0
     printf '    { "id": "%s", "category": "%s", "status": "%s", "name": "%s", "last_verified": "%s" }' \
