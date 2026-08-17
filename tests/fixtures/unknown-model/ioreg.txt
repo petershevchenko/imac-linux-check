@@ -1,1 +1,14 @@
-+-o Root
++-o Root  <class IORegistryEntry, id 0x100000100>
+    +-o PCI0@0  <class IOPCIDevice, id 0x100000200>
+      +-o display@0  <class IOPCIDevice, id 0x100000320, registered, matched, active>
+      | | {
+      | |   "vendor-id" = <de100000>
+      | |   "device-id" = <a0110000>
+      | |   "model" = <"NVIDIA GeForce GTX 680MX">
+      | | }
+      +-o ARPT@0  <class IOPCIDevice, id 0x100000440, registered, matched, active>
+        | {
+        |   "vendor-id" = <e4140000>
+        |   "device-id" = <31430000>
+        |   "model" = <"BCM4331">
+        | }

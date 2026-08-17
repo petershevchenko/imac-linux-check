@@ -17,7 +17,7 @@
 
 set -u
 
-VERSION="0.4.0-dev"
+VERSION="0.5.0-dev"
 
 # --- locate ourselves and the bundled dataset ------------------------------
 
@@ -525,8 +525,17 @@ render_human() {
   if [ "$MODEL_KNOWN" != "yes" ]; then
     printf '\n%sThis model is not in the database yet.%s\n' "$C_YELLOW" "$C_RESET"
     printf '  No verified data exists for %s, and support is never guessed from a\n' "${HW_MODEL:-this machine}"
-    printf '  neighbouring model. A one-click report link will be added in a later\n'
-    printf '  milestone so you can contribute this machine.\n'
+    printf '  neighbouring model.\n'
+    url="$(report_url || true)"
+    if [ -n "$url" ]; then
+      printf '\n  %sHelp add it — this pre-filled report has everything needed:%s\n' "$C_BOLD" "$C_RESET"
+      printf '  %s\n' "$url"
+    else
+      printf '\n  Your hardware dump is large. Open a blank report at:\n'
+      printf '  %s\n' "https://github.com/$CDN_OWNER_REPO/issues/new?template=new-model.yml"
+      printf '  and paste this JSON into it:\n\n'
+      render_json
+    fi
     return 0
   fi
 
@@ -563,6 +572,10 @@ render_markdown() {
   if [ "$MODEL_KNOWN" != "yes" ]; then
     # shellcheck disable=SC2016  # literal backticks are intended markdown
     printf '\n> This model is not in the database yet. No verified data for `%s`.\n' "${HW_MODEL:-this machine}"
+    url="$(report_url || true)"
+    if [ -n "$url" ]; then
+      printf '\n[Add this model](%s)\n' "$url"
+    fi
     return 0
   fi
 
@@ -616,6 +629,54 @@ render_json() {
     printf ' ]\n'
   fi
   printf '}\n'
+}
+
+# --- contribution funnel: pre-filled issue for unknown models --------------
+
+# GitHub caps issue URLs near 8k; beyond this, fall back to print-and-paste.
+ISSUE_MAX_URL="${IMAC_LC_ISSUE_MAX_URL:-8000}"
+
+# urlencode STRING — percent-encode for a query parameter (RFC 3986 unreserved
+# set kept literal). Byte-wise under LC_ALL=C so multibyte input can't slip
+# through unencoded.
+urlencode() {
+  local s="$1" i=0 c out=""
+  local LC_ALL=C
+  while [ "$i" -lt "${#s}" ]; do
+    c="${s:$i:1}"
+    case "$c" in
+      [a-zA-Z0-9.~_-]) out="$out$c" ;;
+      *)               out="$out$(printf '%%%02X' "'$c")" ;;
+    esac
+    i=$((i + 1))
+  done
+  printf '%s' "$out"
+}
+
+# build_issue_body — the human+machine dump a maintainer needs to write a record
+build_issue_body() {
+  printf 'Reported by imac-linux-check %s. Please review before submitting.\n\n' "$VERSION"
+  printf 'Detected hardware:\n\n'
+  printf -- '- Model identifier: %s\n' "${HW_MODEL:-unknown}"
+  printf -- '- macOS: %s %s\n' "${MACOS_NAME:-unknown}" "${MACOS_VER:-}"
+  printf -- '- T2 chip: %s\n' "$T2"
+  printf -- '- Detected PCI ids: %s\n\n' "$(printf '%s' "$DETECTED_PCI" | tr '\n' ' ' | sed 's/ *$//')"
+  printf 'If you are running Linux on this machine, please add what works and what\n'
+  printf 'does not (with kernel version and distro).\n\n'
+  printf 'Collector output:\n\n'
+  printf '```json\n'
+  render_json
+  printf '```\n'
+}
+
+# report_url — pre-filled /issues/new URL, or empty if too long to encode
+report_url() {
+  local title body url
+  title="$(urlencode "Add model: ${HW_MODEL:-unknown iMac}")"
+  body="$(urlencode "$(build_issue_body)")"
+  url="https://github.com/$CDN_OWNER_REPO/issues/new?labels=new-model&title=$title&body=$body"
+  [ "${#url}" -le "$ISSUE_MAX_URL" ] || return 1
+  printf '%s' "$url"
 }
 
 if [ "$JSON_ENGINE" = "none" ]; then

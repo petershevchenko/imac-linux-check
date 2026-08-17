@@ -1,0 +1,79 @@
+name: New model report
+description: Add Linux compatibility data for an iMac not yet in the database.
+title: "Add model: <iMacXX,Y>"
+labels: ["new-model"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping cover a machine we don't have! The fastest path is to
+        run `imac-linux-check` on the Mac and paste its `--json` output below —
+        the tool pre-fills most of this form for you when it meets an unknown model.
+
+        Please write any notes **in your own words**. Do not paste text from the
+        Arch/Debian/Gentoo wikis — they are copyleft and this dataset is CC0. Link
+        them under *Sources* instead.
+  - type: input
+    id: model_identifier
+    attributes:
+      label: Model identifier
+      description: The exact identifier, e.g. from `sysctl hw.model`.
+      placeholder: iMac13,2
+    validations:
+      required: true
+  - type: textarea
+    id: collector_json
+    attributes:
+      label: Collector output (`imac-linux-check --json`)
+      description: Paste the full JSON. This is the machine-readable hardware dump.
+      render: json
+    validations:
+      required: true
+  - type: dropdown
+    id: running_linux
+    attributes:
+      label: Are you running Linux on this machine?
+      description: Direct observation on hardware is the most valuable kind of report.
+      options:
+        - "Yes — reporting what I actually see"
+        - "No — reporting from macOS only (predictions)"
+    validations:
+      required: true
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel version
+      description: Exact string from `uname -r` (if running Linux).
+      placeholder: 7.0.0-28-generic
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution and release
+      placeholder: Ubuntu 24.04
+  - type: textarea
+    id: what_works
+    attributes:
+      label: What works
+      description: Per subsystem — GPU, Wi-Fi, audio, camera, Bluetooth, storage, fans…
+      placeholder: |
+        - GPU: amdgpu binds automatically, external display at 4K
+        - Wi-Fi: needs the out-of-tree wl driver (DKMS)
+  - type: textarea
+    id: what_broken
+    attributes:
+      label: What does not work (and any workarounds)
+      placeholder: |
+        - Backlight: no software brightness control
+        - 5K internal panel: only 4K available
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources
+      description: Links you relied on. We link, we do not copy their text.
+  - type: checkboxes
+    id: license
+    attributes:
+      label: Licensing
+      options:
+        - label: I agree that data I contribute here is released under CC0, and I have not copied prose from copyleft wikis.
+          required: true

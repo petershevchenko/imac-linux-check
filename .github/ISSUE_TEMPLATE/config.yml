@@ -1,0 +1,7 @@
+# Blank issues stay enabled: the collector's pre-filled report link opens a
+# blank issue with the hardware dump already in the body.
+blank_issues_enabled: true
+contact_links:
+  - name: T2 Mac (2020 iMac) support
+    url: https://t2linux.org
+    about: 2020 iMacs have a T2 chip; keyboard, trackpad, audio and SSD support live with the t2linux project.

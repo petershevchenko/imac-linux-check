@@ -18,7 +18,7 @@ setup() {
 @test "--version prints the version" {
   run "$COLLECTOR" --version
   [ "$status" -eq 0 ]
-  [ "$output" = "0.4.0-dev" ]
+  [ "$output" = "0.5.0-dev" ]
 }
 
 @test "--help exits 0 and states the read-only guarantee" {
@@ -192,4 +192,38 @@ make_fake_cdn() {
   run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --offline --json
   [ "$(echo "$output" | jq -r '.data_source')" = "bundled" ]
   [ "$(echo "$output" | jq -r '.marketing_name')" = "iMac (Retina 5K, 27-inch, Late 2015)" ]
+}
+
+# --- contribution funnel: pre-filled issue for unknown models --------------
+
+@test "unknown model: prints a pre-filled issue URL for this repo" {
+  run "$COLLECTOR" --fixture-dir "$FIX/unknown-model" --offline --no-color
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"github.com/petershevchenko/imac-linux-check/issues/new"* ]]
+  [[ "$output" == *"title=Add%20model%3A%20iMac13%2C2"* ]]
+}
+
+@test "unknown model: issue URL body round-trips to the JSON dump" {
+  run "$COLLECTOR" --fixture-dir "$FIX/unknown-model" --offline --no-color
+  url="$(printf '%s\n' "$output" | grep -o 'https://[^ ]*issues/new[^ ]*')"
+  [ -n "$url" ]
+  body="$(printf '%s' "${url#*&body=}")"
+  decoded="$(printf '%b' "${body//%/\\x}")"
+  [[ "$decoded" == *'"model_identifier": "iMac13,2"'* ]]
+  [[ "$decoded" == *'"10de:11a0"'* ]]
+}
+
+@test "unknown model: oversized dump falls back to print-and-paste" {
+  export IMAC_LC_ISSUE_MAX_URL=100
+  run "$COLLECTOR" --fixture-dir "$FIX/unknown-model" --offline --no-color
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"template=new-model.yml"* ]]
+  [[ "$output" == *"paste this JSON"* ]]
+  [[ "$output" == *'"model_identifier": "iMac13,2"'* ]]
+}
+
+@test "markdown for an unknown model links to the report" {
+  run "$COLLECTOR" --fixture-dir "$FIX/unknown-model" --offline --markdown
+  [[ "$output" == *"[Add this model]("* ]]
+  [[ "$output" == *"issues/new"* ]]
 }

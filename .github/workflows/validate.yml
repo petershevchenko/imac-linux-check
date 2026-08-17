@@ -31,6 +31,13 @@ jobs:
       - name: Data integrity (referential integrity, staleness, orphans)
         run: python3 tests/test_data_integrity.py
 
+      - name: Validate issue templates
+        run: |
+          check-jsonschema --builtin-schema vendor.github-issue-forms \
+            .github/ISSUE_TEMPLATE/new-model.yml .github/ISSUE_TEMPLATE/correction.yml
+          check-jsonschema --builtin-schema vendor.github-issue-config \
+            .github/ISSUE_TEMPLATE/config.yml
+
   shell:
     name: shellcheck collector
     runs-on: ubuntu-latest

@@ -32,8 +32,15 @@ models is more useful, and more trustworthy, than one that is vaguely right abou
    **Note:** the network tier is inert until a release **tag `v1`** exists on the repo (see
    milestone 5's `release.yml`); until then every run cleanly falls back to bundled.
 
-5. **Output modes + contribution funnel.** Finalise `--json` / `--markdown` / `--verbose`
-   and the pre-filled GitHub issue URL for unknown models (with the ~8000-char fallback).
+5. **Output modes + contribution funnel.** ✅ *Done.*
+   `--json` / `--markdown` / `--verbose` finalised. An unknown model now prints a
+   **pre-filled GitHub issue URL** carrying the whole `--json` hardware dump (URL-encoded);
+   when the encoded body would exceed ~8000 chars it falls back to print-and-paste against
+   the `new-model.yml` template. Issue forms (`new-model.yml`, `correction.yml`) + config
+   added and schema-validated in CI.
+   *Remaining distribution piece:* `release.yml` to cut the **`v1`** tag (bundles the data
+   snapshot, publishes the release, verifies the jsDelivr URL) — this is what switches the
+   network data tier on. A deploy step the repo owner triggers.
 
 6. **Populate `iMac17,1` fully, then expand.** Fill remaining subsystems from verified
    observation, then add more 27" iMac identifiers.

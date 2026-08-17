@@ -1,0 +1,58 @@
+name: Correction / update
+description: A fact changed — e.g. now fixed in a newer kernel, or a caveat no longer applies.
+title: "Correction: <component or model id>"
+labels: ["correction"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Hardware support facts have a shelf life. A correction needs the kernel,
+        distro, and date it was observed on, so the record's provenance can be
+        updated honestly rather than just overwritten.
+  - type: input
+    id: target
+    attributes:
+      label: Record to correct
+      description: The model identifier or component id, e.g. `gpu-pci-1002-6819`.
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: What changed
+      description: What the record says now vs. what you observe now.
+    validations:
+      required: true
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel version observed
+      placeholder: 7.0.0-28-generic
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution and release observed
+      placeholder: Ubuntu 24.04
+    validations:
+      required: true
+  - type: input
+    id: date_observed
+    attributes:
+      label: Date observed (ISO)
+      placeholder: 2026-08-05
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources
+      description: Links you relied on. We link, we do not copy their text.
+  - type: checkboxes
+    id: license
+    attributes:
+      label: Licensing
+      options:
+        - label: I agree that data I contribute here is released under CC0, and I have not copied prose from copyleft wikis.
+          required: true
