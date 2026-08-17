@@ -6,12 +6,47 @@
     "pci": ["14e4:43a0"]
   },
   "linux": {
-    "status": "unknown",
-    "summary": "No verified Linux support data for this chip on this hardware yet. Broadcom BCM43xx parts commonly require the out-of-tree wl (broadcom-sta) driver, which has Secure Boot implications, but this has not been directly confirmed here and must not be inferred. A report is invited.",
+    "status": "needs_out_of_tree_driver",
+    "driver": "wl",
+    "summary": "No in-tree driver binds this PCIe part; b43 and brcmfmac do not cover 14e4:43a0. Wi-Fi requires Broadcom's proprietary out-of-tree wl driver (the broadcom-sta / bcmwl / broadcom-sta-dkms package), built per-kernel via DKMS. This is the most common Linux dealbreaker on these iMacs, and it carries Secure Boot implications.",
+    "caveats": [
+      {
+        "id": "secure-boot",
+        "summary": "The wl module is unsigned, so it will not load while UEFI Secure Boot is enabled.",
+        "detail": "Either enrol a Machine Owner Key (MOK) and sign the DKMS module, or disable Secure Boot. Out of the box the interface simply does not appear under Secure Boot.",
+        "severity": "major"
+      },
+      {
+        "id": "kernel-6-17-build-break",
+        "summary": "The stock broadcom-sta source fails to build on kernel 6.17 and newer.",
+        "detail": "cfg80211/wireless API changes and removed helpers break the old driver source; distributions have shipped patched revisions and community forks carry the fixes. Relevant here because the reference iMac17,1 runs kernel 7.0.",
+        "severity": "major"
+      },
+      {
+        "id": "no-wpa3",
+        "summary": "BCM4360 does not support WPA3.",
+        "severity": "minor"
+      }
+    ],
+    "workarounds": [
+      {
+        "problem": "No wireless interface after install.",
+        "cause": "Only the proprietary wl driver supports this chip and it is not installed by default.",
+        "fix": "Install the distribution's Broadcom STA package (Debian/Ubuntu: broadcom-sta-dkms / bcmwl-kernel-source; Arch: broadcom-wl-dkms), which builds wl via DKMS and blacklists the conflicting b43/bcma/ssb modules. Wired or USB tethering is needed for the initial install."
+      },
+      {
+        "problem": "wl fails to compile on kernel 6.17+.",
+        "fix": "Use a distribution revision or a community fork of broadcom-sta that carries the kernel 6.17+ build patches."
+      }
+    ],
     "provenance": {
-      "last_verified": "2026-07-24",
-      "verified_by": "not yet verified",
-      "sources": []
+      "last_verified": "2026-08-17",
+      "verified_by": "third-party report",
+      "sources": [
+        "https://wiki.archlinux.org/title/Broadcom_wireless",
+        "https://github.com/Nurozen/broadcom-sta-6.17",
+        "https://gist.github.com/labibmuhajir/53d7d366acb0717932c162549ef6b2c2"
+      ]
     }
   }
 }

@@ -37,7 +37,7 @@ setup() {
 @test "known model: lists gpu and wifi subsystem statuses" {
   run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --no-color
   [[ "$output" == *"gpu"*"works_with_caveats"* ]]
-  [[ "$output" == *"wifi"*"unknown"* ]]
+  [[ "$output" == *"wifi"*"needs_out_of_tree_driver"* ]]
 }
 
 @test "known model: T2 reported absent" {

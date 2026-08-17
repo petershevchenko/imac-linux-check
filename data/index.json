@@ -13,7 +13,7 @@
     "wifi-bcm4360": {
       "category": "wifi",
       "file": "components/wifi-bcm4360.json",
-      "status": "unknown"
+      "status": "needs_out_of_tree_driver"
     }
   },
   "generated_by": "scripts/gen-index.py",
