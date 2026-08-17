@@ -1,0 +1,77 @@
+name: release
+
+# Cutting a tag (e.g. `git tag v1 && git push origin v1`) publishes a release
+# and is what the collector's pinned CDN data tier resolves against. The tag is
+# the deliberate act that promotes data to users — main is never fetched.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: publish release and verify CDN
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: pip install jsonschema check-jsonschema
+
+      # A release must be clean: run the same gates as validate.yml so a bad
+      # merge can never be promoted to a tag that users fetch.
+      - name: Validate data
+        run: |
+          check-jsonschema --schemafile schema/component.schema.json data/components/*.json
+          check-jsonschema --schemafile schema/model.schema.json data/models/*.json
+          python3 scripts/gen-index.py --check
+          python3 tests/test_data_integrity.py
+
+      - name: Determine tag
+        id: tag
+        run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Build offline bundle
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          stage="imac-linux-check-${tag}"
+          mkdir -p "$stage"
+          # Ship the collector next to a snapshot of data/ so the extracted tool
+          # works fully offline (bin/ and data/ must stay siblings).
+          cp -R bin data schema LICENSE LICENSE-DATA README.md ROADMAP.md "$stage/"
+          # Stamp the bundled snapshot date so `--offline` reports it honestly.
+          today="$(date -u +%Y-%m-%d)"
+          sed -i "s/^SNAPSHOT_DATE=.*/SNAPSHOT_DATE=\"${today}\"/" "$stage/bin/imac-linux-check"
+          tar -czf "${stage}.tar.gz" "$stage"
+          echo "Bundled ${stage}.tar.gz"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          gh release create "$tag" "imac-linux-check-${tag}.tar.gz" \
+            --title "$tag" --generate-notes
+
+      - name: Verify jsDelivr resolves the new tag
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          url="https://cdn.jsdelivr.net/gh/${GITHUB_REPOSITORY}@${tag}/data/models/imac17-1.json"
+          echo "Checking $url"
+          for i in $(seq 1 12); do
+            if curl -fsSL "$url" | python3 -c 'import json,sys; json.load(sys.stdin)'; then
+              echo "jsDelivr serves valid JSON for $tag"
+              exit 0
+            fi
+            echo "attempt $i: not ready yet, waiting for CDN propagation…"
+            sleep 15
+          done
+          echo "::error::jsDelivr did not resolve $url after retries"
+          exit 1
