@@ -1,0 +1,21 @@
+{
+  "id": "wifi-pci-14e4-43ba",
+  "category": "wifi",
+  "name": "Broadcom BCM4350 802.11ac",
+  "match": {
+    "pci": ["14e4:43ba"]
+  },
+  "linux": {
+    "status": "works",
+    "driver": "brcmfmac",
+    "firmware_package": "linux-firmware",
+    "summary": "Binds automatically to the in-tree brcmfmac driver and works out of the box on a stock install; no out-of-tree driver is needed. Firmware ships in linux-firmware. Directly observed connecting and working on this hardware.",
+    "provenance": {
+      "last_verified": "2026-08-17",
+      "verified_kernel": "7.0.0-28-generic",
+      "verified_distro": "Ubuntu 24.04.4 LTS",
+      "verified_by": "direct observation on hardware",
+      "sources": []
+    }
+  }
+}

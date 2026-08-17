@@ -12,7 +12,7 @@
       +-o ARPT@0  <class IOPCIDevice, id 0x100000440, registered, matched, active>
         | {
         |   "vendor-id" = <e4140000>
-        |   "device-id" = <a0430000>
+        |   "device-id" = <ba430000>
         |   "subsystem-vendor-id" = <6b100000>
-        |   "model" = <"BCM4360">
+        |   "model" = <"BCM4350">
         | }

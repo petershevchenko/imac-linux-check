@@ -9,6 +9,6 @@
 02:00.0 Ethernet controller [0200]: Broadcom Inc. and subsidiaries NetXtreme BCM57766 Gigabit Ethernet PCIe [14e4:1686] (rev 01)
 	Kernel driver in use: tg3
 	Kernel modules: tg3
-03:00.0 Network controller [0280]: Broadcom Inc. and subsidiaries BCM4360 802.11ac Wireless Network Adapter [14e4:43a0] (rev 03)
-	Kernel driver in use: wl
-	Kernel modules: bcma, wl
+03:00.0 Network controller [0280]: Broadcom Inc. and subsidiaries BCM4350 802.11ac Wireless Network Adapter [14e4:43ba] (rev 08)
+	Kernel driver in use: brcmfmac
+	Kernel modules: brcmfmac

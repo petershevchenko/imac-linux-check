@@ -1,0 +1,28 @@
+{
+  "id": "ethernet-pci-14e4-1686",
+  "category": "ethernet",
+  "name": "Broadcom NetXtreme BCM57766 Gigabit Ethernet",
+  "match": {
+    "pci": ["14e4:1686"]
+  },
+  "linux": {
+    "status": "works_with_caveats",
+    "driver": "tg3",
+    "summary": "Binds automatically to the in-tree tg3 driver and works out of the box.",
+    "caveats": [
+      {
+        "id": "rare-dropout-under-load",
+        "summary": "Very rarely drops the link under heavy sustained load.",
+        "detail": "Reported by the machine's owner as an occasional dropout under heavy load; recovers on its own. Cause not yet isolated.",
+        "severity": "minor"
+      }
+    ],
+    "provenance": {
+      "last_verified": "2026-08-17",
+      "verified_kernel": "7.0.0-28-generic",
+      "verified_distro": "Ubuntu 24.04.4 LTS",
+      "verified_by": "direct observation on hardware",
+      "sources": []
+    }
+  }
+}

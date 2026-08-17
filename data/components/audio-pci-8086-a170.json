@@ -1,0 +1,28 @@
+{
+  "id": "audio-pci-8086-a170",
+  "category": "audio",
+  "name": "Intel Sunrise Point-H HD Audio (internal speakers and microphone)",
+  "match": {
+    "pci": ["8086:a170"]
+  },
+  "linux": {
+    "status": "works_with_caveats",
+    "driver": "snd_hda_intel",
+    "summary": "Internal speakers and microphone work out of the box via snd_hda_intel.",
+    "caveats": [
+      {
+        "id": "stereo-only",
+        "summary": "Output is stereo only; the iMac's full multi-speaker array is not driven.",
+        "detail": "Sound plays but only as stereo — the additional internal speakers are not all used.",
+        "severity": "minor"
+      }
+    ],
+    "provenance": {
+      "last_verified": "2026-08-17",
+      "verified_kernel": "7.0.0-28-generic",
+      "verified_distro": "Ubuntu 24.04.4 LTS",
+      "verified_by": "direct observation on hardware",
+      "sources": []
+    }
+  }
+}

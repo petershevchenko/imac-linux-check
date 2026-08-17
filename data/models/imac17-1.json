@@ -5,7 +5,10 @@
   "native_resolution": "5120x2880",
   "components": [
     "gpu-pci-1002-6819",
-    "wifi-bcm4360"
+    "wifi-pci-14e4-43ba",
+    "ethernet-pci-14e4-1686",
+    "audio-pci-8086-a170",
+    "storage-pci-144d-a801"
   ],
   "variants": [
     {
@@ -16,12 +19,14 @@
   ],
   "model_notes": [
     "Display topology: eDP-1 is the internal 5K panel primary link; DP-1 is the panel's second link (reported disconnected in single-link operation); DP-2 and DP-3 are the two external Thunderbolt 2 / Mini DisplayPort ports.",
-    "External display over Mini DisplayPort to DisplayPort (passive cable) works at 3840x2160."
+    "External display over Mini DisplayPort to DisplayPort (passive cable) works at 3840x2160.",
+    "FaceTime HD ('EyeSight') camera works. It is not a PCI device, so the collectors do not match it to a component record.",
+    "Thunderbolt (thunderbolt driver) and the SD card reader (sdhci-pci) bind and are detected."
   ],
   "provenance": {
-    "last_verified": "2026-07-24",
+    "last_verified": "2026-08-17",
     "verified_kernel": "7.0.0-28-generic",
-    "verified_distro": "Ubuntu 24.04",
+    "verified_distro": "Ubuntu 24.04.4 LTS",
     "verified_by": "direct observation on hardware",
     "sources": []
   }

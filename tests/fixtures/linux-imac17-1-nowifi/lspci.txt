@@ -1,4 +1,4 @@
 01:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] Pitcairn PRO [1002:6819]
 	Kernel driver in use: amdgpu
-03:00.0 Network controller [0280]: Broadcom Inc. and subsidiaries BCM4360 802.11ac Wireless Network Adapter [14e4:43a0] (rev 03)
-	Kernel modules: bcma, wl
+03:00.0 Network controller [0280]: Broadcom Inc. and subsidiaries BCM4350 802.11ac Wireless Network Adapter [14e4:43ba] (rev 08)
+	Kernel modules: brcmfmac

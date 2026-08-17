@@ -33,7 +33,7 @@ setup() {
 @test "detects live drivers and cross-references the dataset" {
   run "$PROBE" --fixture-dir "$FIX/linux-imac17-1" --no-color
   [[ "$output" == *"gpu"*"1002:6819"*"amdgpu"*"works_with_caveats"* ]]
-  [[ "$output" == *"wifi"*"14e4:43a0"*"wl"*"needs_out_of_tree_driver"* ]]
+  [[ "$output" == *"wifi"*"14e4:43ba"*"brcmfmac"*"works"* ]]
 }
 
 @test "--json carries a direct-observation provenance block" {
@@ -48,10 +48,10 @@ setup() {
 @test "--json marks a known component with its bound driver and dataset status" {
   run "$PROBE" --fixture-dir "$FIX/linux-imac17-1" --json
   wifi="$(echo "$output" | jq -c '.devices[] | select(.category=="wifi")')"
-  [ "$(echo "$wifi" | jq -r '.driver')" = "wl" ]
+  [ "$(echo "$wifi" | jq -r '.driver')" = "brcmfmac" ]
   [ "$(echo "$wifi" | jq -r '.bound')" = "true" ]
-  [ "$(echo "$wifi" | jq -r '.dataset_component')" = "wifi-bcm4360" ]
-  [ "$(echo "$wifi" | jq -r '.dataset_status')" = "needs_out_of_tree_driver" ]
+  [ "$(echo "$wifi" | jq -r '.dataset_component')" = "wifi-pci-14e4-43ba" ]
+  [ "$(echo "$wifi" | jq -r '.dataset_status')" = "works" ]
 }
 
 @test "an unbound device is reported as not bound" {
@@ -69,7 +69,7 @@ setup() {
   body="$(printf '%s' "${url#*&body=}")"
   decoded="$(printf '%b' "${body//%/\\x}")"
   [[ "$decoded" == *"direct observation on hardware"* ]]
-  [[ "$decoded" == *'"driver": "wl"'* ]]
+  [[ "$decoded" == *'"driver": "brcmfmac"'* ]]
 }
 
 @test "--markdown emits a device table" {

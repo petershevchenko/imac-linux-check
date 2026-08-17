@@ -1,0 +1,20 @@
+{
+  "id": "storage-pci-144d-a801",
+  "category": "storage",
+  "name": "Apple/Samsung SSD (AHCI mode)",
+  "match": {
+    "pci": ["144d:a801"]
+  },
+  "linux": {
+    "status": "works",
+    "driver": "ahci",
+    "summary": "The Apple SSD (Samsung controller) presents in AHCI mode and binds the in-tree ahci driver; the machine boots and runs Linux from it. No proprietary driver needed.",
+    "provenance": {
+      "last_verified": "2026-08-17",
+      "verified_kernel": "7.0.0-28-generic",
+      "verified_distro": "Ubuntu 24.04.4 LTS",
+      "verified_by": "direct observation on hardware",
+      "sources": []
+    }
+  }
+}

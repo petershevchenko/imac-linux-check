@@ -37,7 +37,7 @@ setup() {
 @test "known model: lists gpu and wifi subsystem statuses" {
   run "$COLLECTOR" --fixture-dir "$FIX/imac17-1" --no-color
   [[ "$output" == *"gpu"*"works_with_caveats"* ]]
-  [[ "$output" == *"wifi"*"needs_out_of_tree_driver"* ]]
+  [[ "$output" == *"wifi"*"works"* ]]
 }
 
 @test "known model: T2 reported absent" {
@@ -51,7 +51,7 @@ setup() {
   echo "$output" | jq -e . >/dev/null
   [ "$(echo "$output" | jq -r '.model_identifier')" = "iMac17,1" ]
   [ "$(echo "$output" | jq -r '.model_known')" = "true" ]
-  [ "$(echo "$output" | jq -r '.subsystems | length')" = "2" ]
+  [ "$(echo "$output" | jq -r '.subsystems | length')" = "5" ]
 }
 
 @test "--markdown emits a table" {
@@ -119,7 +119,7 @@ setup() {
   run "$COLLECTOR" __pci-extract < "$FIX/imac17-1/ioreg.txt"
   [ "$status" -eq 0 ]
   [ "${lines[0]}" = "1002:6819" ]
-  [ "${lines[1]}" = "14e4:43a0" ]
+  [ "${lines[1]}" = "14e4:43ba" ]
   [ "${#lines[@]}" -eq 2 ]
 }
 

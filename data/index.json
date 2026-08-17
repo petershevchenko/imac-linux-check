@@ -1,5 +1,15 @@
 {
   "components": {
+    "audio-pci-8086-a170": {
+      "category": "audio",
+      "file": "components/audio-pci-8086-a170.json",
+      "status": "works_with_caveats"
+    },
+    "ethernet-pci-14e4-1686": {
+      "category": "ethernet",
+      "file": "components/ethernet-pci-14e4-1686.json",
+      "status": "works_with_caveats"
+    },
     "gpu-pci-1002-6819": {
       "category": "gpu",
       "file": "components/gpu-pci-1002-6819.json",
@@ -10,18 +20,31 @@
       "file": "components/gpu-pci-1002-6938.json",
       "status": "unknown"
     },
+    "storage-pci-144d-a801": {
+      "category": "storage",
+      "file": "components/storage-pci-144d-a801.json",
+      "status": "works"
+    },
     "wifi-bcm4360": {
       "category": "wifi",
       "file": "components/wifi-bcm4360.json",
       "status": "needs_out_of_tree_driver"
+    },
+    "wifi-pci-14e4-43ba": {
+      "category": "wifi",
+      "file": "components/wifi-pci-14e4-43ba.json",
+      "status": "works"
     }
   },
   "generated_by": "scripts/gen-index.py",
   "models": {
     "iMac17,1": {
       "components": [
+        "audio-pci-8086-a170",
+        "ethernet-pci-14e4-1686",
         "gpu-pci-1002-6819",
-        "wifi-bcm4360"
+        "storage-pci-144d-a801",
+        "wifi-pci-14e4-43ba"
       ],
       "file": "models/imac17-1.json",
       "marketing_name": "iMac (Retina 5K, 27-inch, Late 2015)"
