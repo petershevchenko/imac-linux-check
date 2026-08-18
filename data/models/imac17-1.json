@@ -7,10 +7,15 @@
     "gpu-pci-1002-6819",
     "wifi-pci-14e4-43ba",
     "ethernet-pci-14e4-1686",
-    "audio-pci-8086-a170",
+    "audio-imac17-1",
     "storage-pci-144d-a801"
   ],
   "variants": [
+    {
+      "description": "Radeon R9 M380 (Bonaire) — base/lower-tier GPU option, binds radeon",
+      "distinguish_by": { "pci": ["1002:6640"] },
+      "components_replace": { "gpu-pci-1002-6819": "gpu-pci-1002-6640" }
+    },
     {
       "description": "Build-to-order Radeon R9 M395 / M395X",
       "distinguish_by": { "pci": ["1002:6938"] },
@@ -21,7 +26,8 @@
     "Display topology: eDP-1 is the internal 5K panel primary link; DP-1 is the panel's second link (reported disconnected in single-link operation); DP-2 and DP-3 are the two external Thunderbolt 2 / Mini DisplayPort ports.",
     "External display over Mini DisplayPort to DisplayPort (passive cable) works at 3840x2160.",
     "FaceTime HD ('EyeSight') camera works. It is not a PCI device, so the collectors do not match it to a component record.",
-    "Thunderbolt (thunderbolt driver) and the SD card reader (sdhci-pci) bind and are detected."
+    "Thunderbolt (thunderbolt driver) and the SD card reader (sdhci-pci) bind and are detected.",
+    "GPU shipped in at least two configurations: Pitcairn (1002:6819, amdgpu) and Bonaire (1002:6640, radeon). Wi-Fi/ethernet/audio confirmed on two separate machines (kernels 7.0.0-28 and 6.8.0-83)."
   ],
   "provenance": {
     "last_verified": "2026-08-17",

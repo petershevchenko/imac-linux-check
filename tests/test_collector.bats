@@ -150,6 +150,23 @@ setup() {
   [ "$(echo "$output" | jq -r '.subsystems[] | select(.category=="gpu") | .id')" = "gpu-pci-1002-6819" ]
 }
 
+@test "iMac18,3: known model with CS8409 audio needing an out-of-tree driver" {
+  run "$COLLECTOR" --fixture-dir "$FIX/imac18-3" --no-color --offline
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"iMac18,3"* ]]
+  [[ "$output" == *"audio"*"needs_out_of_tree_driver"* ]]
+  [[ "$output" == *"imac-sound"* ]]
+  run "$COLLECTOR" --fixture-dir "$FIX/imac18-3" --json --offline
+  [ "$(echo "$output" | jq -r '.subsystems | length')" = "5" ]
+  [ "$(echo "$output" | jq -r '.subsystems[] | select(.category=="gpu") | .id')" = "gpu-pci-1002-67df" ]
+}
+
+@test "iMac17,1 Bonaire (M380) GPU: variant swaps to the radeon component" {
+  run "$COLLECTOR" --fixture-dir "$FIX/imac17-1-m380" --json --offline
+  [ "$(echo "$output" | jq -r '.detected_pci[0]')" = "1002:6640" ]
+  [ "$(echo "$output" | jq -r '.subsystems[] | select(.category=="gpu") | .id')" = "gpu-pci-1002-6640" ]
+}
+
 @test "M395 BTO GPU: variant matched, GPU component swapped" {
   run "$COLLECTOR" --fixture-dir "$FIX/imac17-1-m395" --no-color
   [[ "$output" == *"Variant:"*"M395"* ]]

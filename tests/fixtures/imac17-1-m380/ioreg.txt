@@ -1,0 +1,12 @@
++-o Root  <class IORegistryEntry, id 0x100000100>
+    +-o display@1,0  <class IOPCIDevice, id 0x100000320, registered, matched, active>
+    | | {
+    | |   "vendor-id" = <02100000>
+    | |   "device-id" = <40660000>
+    | |   "model" = <"AMD Radeon R9 M380">
+    | | }
+    +-o ARPT@0  <class IOPCIDevice, id 0x100000440, registered, matched, active>
+      | {
+      |   "vendor-id" = <e4140000>
+      |   "device-id" = <ba430000>
+      | }

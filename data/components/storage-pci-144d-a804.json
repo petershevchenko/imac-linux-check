@@ -1,0 +1,20 @@
+{
+  "id": "storage-pci-144d-a804",
+  "category": "storage",
+  "name": "Apple/Samsung NVMe SSD",
+  "match": {
+    "pci": ["144d:a804"]
+  },
+  "linux": {
+    "status": "works",
+    "driver": "nvme",
+    "summary": "The Apple/Samsung NVMe SSD binds the in-tree nvme driver; the machine boots and runs Linux from it. No proprietary driver needed.",
+    "provenance": {
+      "last_verified": "2026-08-18",
+      "verified_kernel": "7.0.0-27-generic",
+      "verified_distro": "Ubuntu 26.04 LTS",
+      "verified_by": "direct observation on hardware",
+      "sources": []
+    }
+  }
+}

@@ -1,14 +1,14 @@
 {
-  "id": "audio-pci-8086-a170",
+  "id": "audio-imac17-1",
   "category": "audio",
-  "name": "Intel Sunrise Point-H HD Audio (internal speakers and microphone)",
+  "name": "iMac17,1 internal audio (Intel HDA controller + Cirrus codec)",
   "match": {
-    "pci": ["8086:a170"]
+    "model_string": ["iMac17,1 internal audio"]
   },
   "linux": {
     "status": "works_with_caveats",
     "driver": "snd_hda_intel",
-    "summary": "Internal speakers and microphone work out of the box via snd_hda_intel.",
+    "summary": "Internal speakers and microphone work out of the box via snd_hda_intel. Matched per model rather than by the shared 8086:a170 HDA controller, whose codec differs between iMac generations (see audio-cs8409 for 2017+).",
     "caveats": [
       {
         "id": "stereo-only",
@@ -18,7 +18,7 @@
       }
     ],
     "provenance": {
-      "last_verified": "2026-08-17",
+      "last_verified": "2026-08-18",
       "verified_kernel": "7.0.0-28-generic",
       "verified_distro": "Ubuntu 24.04.4 LTS",
       "verified_by": "direct observation on hardware",

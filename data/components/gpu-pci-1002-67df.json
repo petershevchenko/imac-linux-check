@@ -1,0 +1,30 @@
+{
+  "id": "gpu-pci-1002-67df",
+  "category": "gpu",
+  "name": "AMD Ellesmere / Polaris 10 (Radeon Pro 580 class)",
+  "match": {
+    "pci": ["1002:67df"]
+  },
+  "linux": {
+    "status": "works_with_caveats",
+    "driver": "amdgpu",
+    "kernel_min": "4.9",
+    "firmware_package": "linux-firmware",
+    "summary": "amdgpu binds automatically and drives the internal panel at 4K and external displays out of the box.",
+    "caveats": [
+      {
+        "id": "no-5k-configured",
+        "summary": "The internal panel runs at 3840x2160; native 5120x2880 is not enabled as shipped.",
+        "detail": "Unlike the DCE 6.0 iMac17,1 (where 5K is bandwidth-impossible on one link), this Polaris GPU uses DisplayPort 1.4 / HBR3 and has the bandwidth for 5K60 on a single link, so 5K may be achievable. The reported machine ran 4K and did not pursue 5K, so it is recorded as a caveat, not a confirmed working mode.",
+        "severity": "moderate"
+      }
+    ],
+    "provenance": {
+      "last_verified": "2026-08-18",
+      "verified_kernel": "7.0.0-27-generic",
+      "verified_distro": "Ubuntu 26.04 LTS",
+      "verified_by": "direct observation on hardware",
+      "sources": []
+    }
+  }
+}

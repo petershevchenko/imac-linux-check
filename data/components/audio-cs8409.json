@@ -1,0 +1,37 @@
+{
+  "id": "audio-cs8409",
+  "category": "audio",
+  "name": "Cirrus Logic CS8409 (2017+ iMac internal audio)",
+  "match": {
+    "model_string": ["CS8409"]
+  },
+  "linux": {
+    "status": "needs_out_of_tree_driver",
+    "driver": "snd_hda_intel",
+    "summary": "The Intel HDA controller binds snd_hda_intel, but the CS8409 codec produces no sound or microphone input with the in-tree driver: its upstream quirk table targets Dell systems, not iMacs. Directly observed as non-working until an out-of-tree driver is installed.",
+    "caveats": [
+      {
+        "id": "no-sound-out-of-box",
+        "summary": "Speakers and microphone are silent on a stock install despite snd_hda_intel binding.",
+        "detail": "A bound HDA controller is not the same as working audio here; the codec needs model-specific quirks the mainline driver does not carry for iMacs.",
+        "severity": "major"
+      }
+    ],
+    "workarounds": [
+      {
+        "problem": "No speaker output and no microphone input on a stock install.",
+        "cause": "The in-tree snd-hda-codec quirk table does not cover the iMac CS8409 wiring.",
+        "fix": "Build and install an out-of-tree CS8409 driver via DKMS (e.g. the imac-sound project). As a DKMS module it must be signed for Secure Boot, or Secure Boot disabled."
+      }
+    ],
+    "provenance": {
+      "last_verified": "2026-08-18",
+      "verified_kernel": "7.0.0-27-generic",
+      "verified_distro": "Ubuntu 26.04 LTS",
+      "verified_by": "direct observation on hardware",
+      "sources": [
+        "https://github.com/petershevchenko/imac-sound"
+      ]
+    }
+  }
+}

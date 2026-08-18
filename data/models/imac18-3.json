@@ -1,0 +1,26 @@
+{
+  "model_identifier": "iMac18,3",
+  "marketing_name": "iMac (Retina 5K, 27-inch, 2017)",
+  "screen_size_inches": 27,
+  "native_resolution": "5120x2880",
+  "components": [
+    "gpu-pci-1002-67df",
+    "wifi-pci-14e4-43ba",
+    "ethernet-pci-14e4-1686",
+    "audio-cs8409",
+    "storage-pci-144d-a804"
+  ],
+  "model_notes": [
+    "Audio is the notable gotcha on this generation: the HDA controller binds snd_hda_intel but the CS8409 codec is silent until an out-of-tree driver is installed (see the audio subsystem).",
+    "FaceTime HD ('EyeSight') camera works. It is not a PCI device, so the collectors do not match it to a component record.",
+    "Thunderbolt 3 (thunderbolt driver) is detected and binds.",
+    "Being a Polaris GPU (DisplayPort 1.4 / HBR3), this model has the bandwidth for native 5K, unlike the 2015 iMac17,1 — but the reported machines ran 4K and did not configure 5K."
+  ],
+  "provenance": {
+    "last_verified": "2026-08-18",
+    "verified_kernel": "7.0.0-27-generic",
+    "verified_distro": "Ubuntu 26.04 LTS",
+    "verified_by": "direct observation on hardware",
+    "sources": []
+  }
+}

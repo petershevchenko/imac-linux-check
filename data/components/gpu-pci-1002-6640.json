@@ -1,0 +1,39 @@
+{
+  "id": "gpu-pci-1002-6640",
+  "category": "gpu",
+  "name": "AMD Bonaire (Radeon R9 M380 class, GCN 2.0 / Sea Islands)",
+  "match": {
+    "pci": ["1002:6640"]
+  },
+  "linux": {
+    "status": "works_with_caveats",
+    "driver": "radeon",
+    "driver_alternatives": ["amdgpu"],
+    "summary": "The build-to-order lower-tier GPU on some iMac17,1 units. Binds the legacy radeon driver automatically and drives the internal panel at 4K and external displays. amdgpu can be forced instead via kernel parameters.",
+    "caveats": [
+      {
+        "id": "no-native-5k",
+        "summary": "Native 5120x2880 is not available; the internal panel is limited to 3840x2160.",
+        "detail": "Same DisplayPort 1.2 bandwidth ceiling as the other iMac17,1 GPUs — 5K60 needs two DisplayPort channels and does not fit on one.",
+        "severity": "major"
+      }
+    ],
+    "workarounds": [
+      {
+        "problem": "You want the modern amdgpu driver instead of the legacy radeon driver.",
+        "fix": "Force Sea Islands to amdgpu via kernel parameters.",
+        "kernel_params_add": [
+          "radeon.cik_support=0",
+          "amdgpu.cik_support=1"
+        ]
+      }
+    ],
+    "provenance": {
+      "last_verified": "2026-08-18",
+      "verified_kernel": "6.8.0-83-generic",
+      "verified_distro": "Ubuntu 24.04.3 LTS",
+      "verified_by": "direct observation on hardware",
+      "sources": []
+    }
+  }
+}

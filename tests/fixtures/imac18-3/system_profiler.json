@@ -1,0 +1,6 @@
+{
+  "SPHardwareDataType": [
+    { "_name": "hardware_overview", "machine_model": "iMac18,3", "machine_name": "iMac", "physical_memory": "32 GB" }
+  ],
+  "SPiBridgeDataType": []
+}
